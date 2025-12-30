@@ -1,149 +1,384 @@
-# Weather Page - Technical Documentation
-
-## Document Information
-- **Version**: 1.1 (Premium)
-- **Date**: December 30, 2025
-- **Page**: Weather
-- **Route**: `/weather`
-- **Primary File**: `web/src/views/weather.vue`
+# Weather & Environmental Monitoring
+## Technical Design Specification
 
 ---
 
-## 1. Frontend Architecture
-
-### 1.1 Core Components
-The Weather view relies on a modular component structure to separate display logic for different sensor groups.
-
-| Component | Responsibility |
-| :--- | :--- |
-| **`weather.vue`** | Main container; handles routing, site selection, and global state orchestration. |
-| **`WeatherItem.vue`** | Pure presentational component for individual metric cards (Temp, Wind). |
-| **`WeatherChart.vue`** | Wrapper around Chart.js/ApexCharts for historical data visualization. |
-| **`SummarySoilPopUp.vue`** | Detailed modal for soil sensor aggregates and depth analysis. |
-
-### 1.2 State Management (`piniaWeather`)
-State is managed centralized in `web/src/store/weather.js` to ensure data consistency across widgets.
-
-> [!WARNING]
-> Weather data is cached for performance. Always use `getWeatherData()` with explicit `startDate`/`endDate` to bypass stale cache when filtering.
-
-**Key State Properties**:
-- `data`: List of site devices and their basic metadata.
-- `weatherData`: Raw metrics for the current site.
-- `chartData`: Data specifically formatted for historical graphing.
-- `groupDevices`: Configuration for virtual or grouped sensor devices.
+### Document Control
+| Attribute | Value |
+|:---|:---|
+| **Document ID** | MAYA-TSD-WEATHER-001 |
+| **Version** | 1.0 |
+| **Last Updated** | December 30, 2025 |
+| **Status** | Approved |
+| **Owner** | Engineering Team |
+| **Classification** | Internal - Technical |
 
 ---
 
-## 2. API Strategy & Data Layer
+## 1. System Architecture
 
-### 2.1 Backend Data Flow
+### 1.1 High-Level Architecture
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant VueApp
-    participant PiniaStore
-    participant API_V2
-    participant API_V4
-    participant Provider
-
-    User->>VueApp: Navigate to /weather
-    VueApp->>PiniaStore: retrieveSiteDevices()
-    PiniaStore->>API_V2: GET /site (OData)
-    API_V2-->>PiniaStore: List of Devices
-    
-    par Parallel Data Fetching
-        PiniaStore->>API_V2: GET /weather-data/{id}
-        PiniaStore->>API_V4: GET /metrics (External)
-    end
-    
-    API_V2->>Provider: Query Hardware (Ambient/Davis)
-    Provider-->>API_V2: Return Raw Metrics
-    API_V2-->>PiniaStore: Normalized Data JSON
-    PiniaStore-->>VueApp: Update Reactive State
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Frontend (Vue 3)                          │
+├─────────────────────────────────────────────────────────────────┤
+│  Views           │  Components           │  Store (Pinia)       │
+│  └─ weather.vue  │  ├─ WeatherCard.vue   │  └─ weather.js       │
+│                  │  ├─ WeatherChart.vue  │                       │
+│                  │  └─ SoilSensors.vue   │                       │
+├─────────────────────────────────────────────────────────────────┤
+│                          API Layer                               │
+│            apiClient + Dashboard API + Public API (V4)           │
+├─────────────────────────────────────────────────────────────────┤
+│                     Backend (Node.js)                            │
+│              Weather Station Integration + Calculation           │
+├─────────────────────────────────────────────────────────────────┤
+│                      External Services                           │
+│           Davis | Metos (Fieldclimate) | Virtual Station        │
+├─────────────────────────────────────────────────────────────────┤
+│                      Database (MySQL)                            │
+│              weather_data | sensor | device                      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Endpoint Specification
+### 1.2 Technology Stack
 
-| Scope | Method | Endpoint | Purpose |
-| :--- | :--- | :--- | :--- |
-| **Site Mgmt** | `GET` | `/site` | Retrieve site hierarchy and linked sensors. |
-| **Real-time** | `GET` | `/weatherSingleData` | Fetch latest value for a specific sensor code (e.g., `T1`). |
-| **Analysis** | `GET` | `/weather-data/{id}` | Batch retrieval of historical data for charting. |
-| **External** | `GET` | `/api/v4/metrics` | Public API for third-party integrations (Token Auth). |
-
----
-
-## 3. Data Flow & Integration
-
-### 3.1 External Weather Providers
-The backend orchestrates data from multiple hardware and virtual providers, normalizing them into a common Maya data model:
-- **Physical**: Ambient Weather, Netatmo, WeatherLink (Davis).
-- **Virtual**: OpenWeatherMap (Forecasts).
-
-### 3.2 Unit Conversion Strategies
-The system stores all data in **Metric (SI)** units by default. Conversion happens **dynamically on the frontend** at render time.
-
-> [!TIP]
-> Do not convert data in the store. Keep state pure (Metric) and use Vue computed properties for Imperial display.
-
-- **Temperature**: `(C * 9/5) + 32`
-- **Wind**: `km/h * 0.621371`
-- **Rain**: `mm * 0.0393701`
+| Layer | Technology | Version |
+|:---|:---|:---|
+| Frontend Framework | Vue.js | 3.x |
+| Chart Library | Chart.js | 4.x |
+| State Management | Pinia | 2.x |
+| External API | REST (V4) | 4.0 |
+| ET Calculation | Penman-Monteith | Standard |
 
 ---
 
-## 4. Security & Access Control
+## 2. Component Architecture
 
-### 4.1 Token-Based Access
-Public access to weather data (for embedded widgets) is secured using individual API tokens. These tokens can be scoped to specific sites to prevent unauthorized data exposure.
+### 2.1 View Components
 
-### 4.2 Secured Iframe Widgets
-The `WidgetHagaController` facilitates secure embedding.
+| Component | Path | Responsibility |
+|:---|:---|:---|
+| `weather.vue` | `web/src/views/weather.vue` | Main weather dashboard |
 
-**Security Mechanism**:
-1.  **Encryption**: Parameters (`id`, `metrics`) are AES-256 encrypted using the tenant's app key.
-2.  **Signature**: Requests are signed to prevent tampering.
-3.  **Whitelisting**: (Optional) Usage can be restricted to specific referrer domains.
+### 2.2 Child Components
 
----
-
-## 5. Directory Mapping
-
-| Layer | File Path |
-| :--- | :--- |
-| **View** | [`web/src/views/weather.vue`](file:///c:/www/mayaApp/web/src/views/weather.vue) |
-| **Store** | [`web/src/store/weather.js`](file:///c:/www/mayaApp/web/src/store/weather.js) |
-| **Model** | [`web/src/plugins/sensors.js`](file:///c:/www/mayaApp/web/src/plugins/sensors.js) |
-| **Service** | [`core-2.0/app/Services/DeviceService.php`](file:///c:/www/mayaApp/core-2.0/app/Services/DeviceService.php) |
-| **Controller** | [`core-2.0/app/Http/Controllers/WeatherController.php`](file:///c:/www/mayaApp/core-2.0/app/Http/Controllers/WeatherController.php) |
+| Component | Path | Responsibility |
+|:---|:---|:---|
+| `WeatherCard.vue` | `web/src/components/weather/WeatherCard.vue` | Individual metric display |
+| `WeatherChart.vue` | `web/src/components/weather/WeatherChart.vue` | Historical chart |
+| `WeatherForecast.vue` | `web/src/components/weather/WeatherForecast.vue` | 7-day forecast |
+| `SoilSensors.vue` | `web/src/components/weather/SoilSensors.vue` | Soil data display |
 
 ---
 
+## 3. State Management
+
+### 3.1 Weather Store
+
+**File**: `web/src/store/weather.js`
+
+```javascript
+// State Structure
+{
+  currentConditions: {
+    temperature: null,
+    humidity: null,
+    windSpeed: null,
+    windGust: null,
+    rainfall: null,
+    et24: null,
+    leafWetness: null
+  },
+  soilData: {
+    temperature: null,
+    humidity: null,
+    oxygen: null,
+    salinity: null
+  },
+  forecast: [],
+  historicalData: [],
+  isLoading: false,
+  lastUpdated: null
+}
+```
+
+### 3.2 Key Actions
+
+| Action | Description | API Call |
+|:---|:---|:---|
+| `fetchCurrentConditions()` | Load current weather | `GET /dashboardASingleData` |
+| `fetchForecast()` | Load 7-day forecast | `GET /weather/forecast` |
+| `fetchHistoricalData(range)` | Load historical | `GET /weather/history` |
+
 ---
 
-## 6. Sensor Reference (System Codes)
+## 4. Data Models
 
-The following table maps system-internal codes to their display names and units, as defined in `web/src/plugins/sensors.js`.
+### 4.1 Weather Data Entity
 
-| Code | Metric Name | Unit | Type |
-| :--- | :--- | :--- | :--- |
-| `T1` | **Air Temperature** | °C | Physical |
-| `HR1` | **Air Humidity** | % | Physical |
-| `WS1` | **Wind Speed** | km/h | Physical |
-| `WS2` | **Wind Gust** | km/h | Physical |
-| `R1` | **Rainfall** | mm | Physical |
-| `PY1` | **Solar Radiation** | W/m² | Physical |
-| `ETP` | **Evapotranspiration** | mm | Calculated |
-| `LWS1` | **Leaf Wetness** | % | Physical |
-| `LWD` | **Leaf Wetness Duration** | - | Calculated |
-| `P1T1_5CM` | **Soil Temperature** | °C | Physical (Depth) |
-| `P1M1_5CM` | **Soil Moisture** | % | Physical (Depth) |
-| `SOIL_OXYGEN` | **Soil Oxygen** | % | Physical |
-| `DOLLAR_SPOT` | **Dollar Spot Risk** | - | Model |
-| `FUSA_2` | **Fusarium Risk** | - | Model |
-| `GP` | **Growing Potential** | % | Model |
+**Table**: `weather_data`
+
+| Column | Type | Description |
+|:---|:---|:---|
+| `id` | BIGINT | Auto-increment ID |
+| `idtenant` | CHAR(36) | Tenant reference |
+| `idsite` | CHAR(36) | Site reference |
+| `metric_code` | VARCHAR(30) | Metric identifier |
+| `value` | DECIMAL(10,4) | Metric value |
+| `unit` | VARCHAR(10) | Unit of measure |
+| `recorded_at` | TIMESTAMP | Measurement time |
+
+### 4.2 Metric Code Reference
+
+| Code | Name | Unit | Category |
+|:---|:---|:---|:---|
+| `air_temperature` | Air Temperature | °C | Atmospheric |
+| `air_humidity` | Air Humidity | % | Atmospheric |
+| `wind_speed` | Wind Speed | m/s | Atmospheric |
+| `wind_gust` | Wind Gust | m/s | Atmospheric |
+| `radiation` | Solar Radiation | W/m² | Atmospheric |
+| `rainfall` | Precipitation | mm | Atmospheric |
+| `leaf_wetness` | Leaf Wetness | % | Derived |
+| `et` | Evapotranspiration | mm | Derived |
+| `et24` | ET 24-Hour | mm/24h | Derived |
+| `dli` | Daily Light Integral | mol/m²/day | Derived |
+| `soil_temperature` | Soil Temperature | °C | Soil |
+| `soil_humidity` | Soil Humidity | % | Soil |
+| `soil_oxygen` | Soil Oxygen | % | Soil |
+| `soil_salinity` | Soil Salinity | dS/m | Soil |
+
+---
+
+## 5. API Specification
+
+### 5.1 Public API (V4)
+
+**Base URL**: `https://api2.mayaglobal.io/api/v4`
+
+#### Get Metrics
+```
+GET /metrics?codes=air_temperature,humidity,et24&idsite=uuid
+Authorization: Bearer {api_token}
+
+Response: 200 OK
+{
+  "air_temperature": {
+    "value": 22.5,
+    "unit": "°C",
+    "timestamp": "2025-12-30T10:00:00Z",
+    "site_id": "uuid",
+    "site_name": "Main Course"
+  },
+  "air_humidity": {
+    "value": 68.0,
+    "unit": "%",
+    "timestamp": "2025-12-30T10:00:00Z"
+  }
+}
+```
+
+### 5.2 Internal Dashboard API
+
+```
+GET /api/v2/dashboardASingleData(code=ETP24)
+Authorization: Bearer {session_token}
+
+Response: 200 OK
+{
+  "ETP24": {
+    "daily": {
+      "value": 5.8,
+      "unit": "mm",
+      "timestamp": "2025-12-30T08:00:00Z"
+    },
+    "weekly": {
+      "value": 38.5
+    }
+  }
+}
+```
+
+### 5.3 Token Generation
+
+**Endpoint**: Settings → API Token Setting
+
+| Field | Description |
+|:---|:---|
+| Name | User-defined token name |
+| Token | Generated UUID-based string |
+| Scopes | Read-only by default |
+| Expiry | Optional expiration date |
+
+---
+
+## 6. External Integrations
+
+### 6.1 Weather Station Mapping
+
+```javascript
+// Station configuration
+{
+  id: 'station-uuid',
+  provider: 'metos',         // 'davis', 'metos', 'virtual'
+  external_id: 'FC12345',    // Provider's station ID
+  site_ids: ['site-1', 'site-2'],
+  polling_interval: 300,     // seconds
+  credentials: {
+    api_key: 'encrypted',
+    api_secret: 'encrypted'
+  }
+}
+```
+
+### 6.2 Provider Adapters
+
+| Provider | API Type | Data Format |
+|:---|:---|:---|
+| Davis | REST | JSON |
+| Metos (Fieldclimate) | REST | JSON |
+| Campbell | Data Logger | CSV |
+| Virtual | Interpolation | Calculated |
+
+### 6.3 Virtual Station Logic
+
+When no physical station is available:
+```javascript
+// Interpolate from nearest stations
+const nearbyStations = await findNearestStations(coordinates, limit=3);
+const weightedValue = calculateInverseDistanceWeighting(nearbyStations, metric);
+```
+
+---
+
+## 7. Calculation Logic
+
+### 7.1 Evapotranspiration (Penman-Monteith)
+
+```javascript
+// Simplified approximation
+// Full implementation uses FAO-56 standard
+const ET0 = (0.408 * delta * (Rn - G) + gamma * (900 / (T + 273)) * u2 * (es - ea)) 
+          / (delta + gamma * (1 + 0.34 * u2));
+```
+
+**Input Parameters**:
+| Symbol | Parameter | Source |
+|:---|:---|:---|
+| Rn | Net radiation | Solar sensor |
+| T | Air temperature | Weather station |
+| u2 | Wind speed at 2m | Weather station |
+| es | Saturation vapor pressure | Calculated |
+| ea | Actual vapor pressure | Humidity sensor |
+
+### 7.2 Daily Light Integral (DLI)
+
+```javascript
+// Convert instantaneous radiation to daily total
+DLI = (radiation_avg * daylight_hours * 3600) / 1000000;
+// Result in mol/m²/day
+```
+
+---
+
+## 8. Sequence Diagrams
+
+### 8.1 Current Conditions Fetch
+
+```
+┌──────┐      ┌─────────────┐      ┌─────────┐      ┌───────────┐
+│ User │      │ weather.vue │      │  Store  │      │    API    │
+└──┬───┘      └──────┬──────┘      └────┬────┘      └─────┬─────┘
+   │  Load Page      │                  │                  │
+   │────────────────>│                  │                  │
+   │                 │  fetchConditions │                  │
+   │                 │─────────────────>│                  │
+   │                 │                  │  GET (parallel)  │
+   │                 │                  │─────────────────>│
+   │                 │                  │  Merge Results   │
+   │                 │  Update Cards    │                  │
+   │                 │<─────────────────│                  │
+   │  Display Data   │                  │                  │
+   │<────────────────│                  │                  │
+```
+
+### 8.2 External Data Polling
+
+```
+┌────────────┐      ┌─────────────┐      ┌────────────────┐
+│ Scheduler  │      │   Backend   │      │ Weather Station│
+└─────┬──────┘      └──────┬──────┘      └───────┬────────┘
+      │  Cron Trigger      │                     │
+      │───────────────────>│                     │
+      │                    │  Request Data       │
+      │                    │────────────────────>│
+      │                    │  JSON Response      │
+      │                    │<────────────────────│
+      │                    │  Transform + Store  │
+      │                    │                     │
+      │  Complete          │                     │
+      │<───────────────────│                     │
+```
+
+---
+
+## 9. Alert System
+
+### 9.1 Threshold Configuration
+
+```javascript
+const alertThresholds = {
+  frost_warning: {
+    metric: 'soil_temperature',
+    operator: '<',
+    value: 2,
+    severity: 'high'
+  },
+  heat_stress: {
+    metric: 'air_temperature',
+    operator: '>',
+    value: 35,
+    severity: 'high'
+  },
+  high_wind: {
+    metric: 'wind_speed',
+    operator: '>',
+    value: 25,
+    severity: 'medium'
+  }
+};
+```
+
+### 9.2 Notification Channels
+
+| Channel | Implementation |
+|:---|:---|
+| In-App | WebSocket push |
+| Email | SMTP service |
+| WhatsApp | Twilio API |
+
+---
+
+## 10. Performance Requirements
+
+| Metric | Requirement |
+|:---|:---|
+| Current conditions load | < 2 seconds |
+| Historical chart render | < 3 seconds (365 days) |
+| API response time | < 500ms |
+| Data freshness | < 5 minutes lag |
+
+---
+
+## 11. Dependencies
+
+| Dependency | Type | Purpose |
+|:---|:---|:---|
+| Weather Stations | External | Data source |
+| Agronomy Module | Consumer | Disease model inputs |
+| Water Module | Consumer | ET for Water Balance |
+| Alarms Module | Consumer | Threshold triggers |
 
 ---
 
