@@ -1,0 +1,768 @@
+# Maya — Technical Documentation (AS‑IS → TO‑BE) + Migration Strategy
+
+> Goal of this document
+>
+> Provide a developer with **zero context** enough technical detail to:
+> 1) understand how the current system works (AS‑IS)
+> 2) understand the target architecture (TO‑BE ideal model / “Model 3”)
+> 3) execute a practical migration plan from the current system (“Model 2”) to Model 3 with minimal downtime and clear validation steps
+>
+> This is intentionally not a summary. It is an implementation playbook.
+
+---
+
+## 0. Executive orientation
+
+### 0.1 Repo layout relevant to tasks
+This workspace has multiple “apps”:
+- `core-2.0/` — Laravel backend API (current primary backend for schedule/tasks)
+- `core/` — legacy Core 1 backend (still used by frontend for some OData calls)
+- `web/` — Vue frontend (schedule UI, day plan)
+
+The schedule/task system today is split across:
+- Tasks: `core-2.0` + legacy `task` DB table
+- Spraying: `core-2.0` + separate `spraying` DB table
+- Frontend merges these in some views.
+
+### 0.2 Data Partitioning Context (Tenant vs Group)
+*   **Tenant** = The Customer / Billing Entity.
+*   **Group** = The Operational Unit / Physical Site (e.g., "North Course" or "Stadium Complex").
+*   **Crucial for Tasks**: Tasks are partitioned by **Group** (`idgroup`), not just Tenant. This ensures that work is isolated per facility.
+    *   *Single-Site*: 1 Tenant ↔ 1 Default Group.
+    *   *Multi-Site*: 1 Tenant ↔ Many Groups.
+
+### 0.3 Core 1 vs Core 2.0 (big picture)
+
+**Core 2.0 (`core-2.0/`)**
+- Newer REST-ish APIs for schedule/tasks and (part of) spraying.
+- Implements schedule creation/update/delete in `ScheduleController` + repository/service layers.
+
+**Core 1 (`core/`)**
+- A generic **OData v4-style gateway** plus “global functions/actions”.
+- Still actively called by the frontend for multiple modules (not only fleet), including:
+  - task/schedule related metadata endpoints (actions, reminders, staff update)
+  - spraying lookup data (product categories, nozzle/unit lookup)
+  - TOIL endpoints
+  - weather/device endpoints and exports
+  - stock management and documents
+
+Practical implication:
+- Even if “Tasks” are mostly served by Core 2.0, the **user-facing Schedule experience** can still break if Core 1 is down/misconfigured, because the UI pulls multiple dependencies from Core 1.
+
+---
+
+## 1A) Core 1 (Legacy) OData framework — how it works
+
+This section exists so a developer understands the legacy surface that still feeds the web app.
+
+### 1A.1 Core 1 API base path and routing model
+
+Core 1 defines routes under:
+- `/api/odata/v1/$metadata` (service metadata)
+- `/api/odata/v1/$openApi` (OpenAPI-ish output)
+
+And then a catch-all dispatcher for CRUD-like OData access:
+- `GET /api/odata/v1/{path}` → `RecordController@handleGet`
+- `POST /api/odata/v1/{path}` → `RecordController@handlePost`
+- `PATCH /api/odata/v1/{path}` → `RecordController@handlePatch`
+- `DELETE /api/odata/v1/{path}` → `RecordController@handleDelete`
+
+Implementation reference:
+- Core 1 routes: `core/routes/api.php`
+- Dispatcher: `core/app/Http/Controllers/RecordController.php`
+
+### 1A.2 Where Core 1 “endpoints” are defined
+
+Core 1 endpoints come from two mechanisms:
+
+1) **OData entities** (tables exposed via the OData engine)
+- Example request patterns used by the frontend:
+  - `/product_category?$expand=stock_type&$filter=...`
+  - `/unit?$filter=...`
+  - `/toil?$filter=...`
+
+2) **Global functions / actions** (custom RPC-style endpoints)
+- These are configured in `core/config/odata.php` and implemented in classes like:
+  - `core/app/Utilities/OData/Functions/MayaFunctions.php`
+  - `core/app/Utilities/OData/Actions/MayaActions.php`
+
+Examples present in Core 1 configuration:
+- `getMachineData(idsuper_tenant=...)`
+- `getMachineDataByMachine(idmachine=...)`
+- `getAllStockTypes(idtenant=...)`
+- `GetInventory(idstock_type=..., idgroup=...)`
+- `groupDevices(idtenant=..., idsite=...)`
+- `weatherChartData(...)`
+- `exportWeatherData`
+
+### 1A.3 How the frontend selects Core 1 vs Core 2.0
+
+The Vue axios wrapper (`web/src/store/axios-config.js`) uses:
+- `VITE_API_V2_URL` by default (Core 2.0)
+- switches to `VITE_API_URL` when a request is made with `{ useLegacyApi: true }`
+
+Important nuance:
+- The web app calls paths like `/product_category?...` without the `/api/odata/v1` prefix.
+- This implies `VITE_API_URL` is expected to already include the Core 1 OData base prefix (typically something like `https://.../api/odata/v1`).
+
+---
+
+## 1B) Which web modules still depend on Core 1 (selected, high-signal list)
+
+This is not “everything legacy in the whole product”; it’s the set that commonly affects schedule/task work.
+
+### 1B.1 Schedule-adjacent legacy calls
+Frontend file: `web/src/store/schedule/index.js`
+- `POST /updateStaff` (legacy)
+- `POST /action`, `PATCH /action(...)` (legacy action CRUD)
+- `POST /task_reminder`, `PATCH /task_reminder(...)` (legacy reminders)
+- `POST /getLeavesandWorkingdaysByUsers` (legacy)
+
+### 1B.2 Spraying lookup dependencies
+Frontend file: `web/src/store/spraying/index.js`
+- `GET /product_category?...` (legacy)
+- `GET /unit?...` (legacy nozzle/speed/gear lookup)
+
+### 1B.3 Fleet / machinery
+Frontend file: `web/src/store/fleet.js`
+- `GET /getMachineData(...)`
+- `GET /getMachineDataByMachine(...)`
+- maintenance/incident endpoints are also legacy via OData or global actions.
+
+### 1B.4 Weather/devices
+Frontend file: `web/src/store/weather.js`
+- `/site?...$expand=devices...` and `/device(...)...` (legacy OData entities)
+- `POST /createGroupDevices`, `POST /updateGroupDevices`, `POST /deleteGroupDevice`
+- `POST /weatherChartData`, `POST /exportWeatherData`
+
+### 1B.5 TOIL
+Frontend file: `web/src/store/toil/index.js`
+- `GET /toil?$filter=type eq 'toil'` (legacy)
+- `GET /toil?$filter=type eq 'overtime'` (legacy)
+- `PATCH /toil(...)` (legacy)
+
+### 1B.6 Stock management (often impacts schedule cost/consumption workflows)
+Frontend file: `web/src/store/stockmanagement.js`
+- `GET /getAllStockTypes(...)` and `GET /GetInventory(...)` (legacy functions)
+- `POST /inventory_ledger` (legacy)
+- `GET/POST /product-documents` (legacy)
+
+---
+
+## 1C) Migration impact of Core 1 dependencies
+
+When planning “Unified Tasks” (AS‑IS → TO‑BE), account for these realities:
+- Moving schedule tasks to a new unified task endpoint does **not** eliminate the need for Core 1 unless you also migrate:
+  - action CRUD + reminder CRUD
+  - TOIL endpoints
+  - spraying lookup helpers (product categories, unit/nozzle tables)
+  - fleet machine metadata endpoints
+
+Recommendation:
+- Treat Core 1 deprecation as a **separate workstream** from unified tasks, with explicit ownership and a dependency checklist.
+
+---
+
+## Appendix A — Frontend → Core 1 dependency map (from `useLegacyApi: true`)
+
+This appendix is meant to be copy/paste-auditable: it shows which Vue store modules still hit Core 1.
+
+Notes:
+- “Entity (OData)” means a Core 1 OData entity set / entity path (often with `$filter`, `$expand`, `$select`).
+- “Function/Action (OData)” means a Core 1 configured global function/action (see `core/config/odata.php`) invoked like `/SomeFunction(...)`.
+- The frontend usually calls paths like `/product?...`; it relies on `VITE_API_URL` already including the Core 1 prefix (typically `/api/odata/v1`).
+
+| Frontend module (store) | Legacy endpoints (method + path) | Core 1 type |
+|---|---|---|
+| `web/src/store/schedule/index.js` | `POST /updateStaff`<br>`POST /action`<br>`PATCH /action({id})`<br>`POST /task_reminder`<br>`PATCH /task_reminder({id})`<br>`POST /getLeavesandWorkingdaysByUsers` | Entity/Action (OData) + Function/Action (OData) |
+| `web/src/store/spraying/index.js` | `GET /product_category?$expand=stock_type&$filter=...`<br>`GET /unit?$filter=nozzle eq ... and speed eq ... and gear_speed eq ... and type eq ...` | Entity (OData) |
+| `web/src/store/toil/index.js` | `GET /toil?$filter=type eq 'toil'`<br>`GET /toil?$filter=type eq 'overtime'`<br>`PATCH /toil({id})` | Entity (OData) |
+| `web/src/store/weather.js` | `GET /site?$select=...&$expand=devices...`<br>`GET /device({id})/counters?$select=...`<br>`GET /device?$filter=...`<br>`GET /groupDevices(idtenant=...,idsite=...)`<br>`POST /createGroupDevices`<br>`POST /updateGroupDevices`<br>`POST /deleteGroupDevice`<br>`POST /weatherChartData`<br>`POST /exportWeatherData` | Entity (OData) + Function/Action (OData) |
+| `web/src/store/stockmanagement.js` | `GET /getAllStockTypes(idtenant=...)`<br>`GET /GetInventory(idstock_type=...,idgroup=...)`<br>`GET /CheckStockTypes(idstock_type=...)`<br>`GET /gt_product_and_status(idtenant=...,idstock_type=...)`<br>`GET /getCostEstimate(idtenant=...,idproduct=...,qty=...,idsupplier=...)`<br>`GET /product?$filter=...`<br>`POST /stock_type`<br>`PATCH /stock_type({id})`<br>`DELETE /stock_type({id})`<br>`POST /inventory_ledger`<br>`GET /product-documents?idtenant=...`<br>`POST /product-documents` | Entity (OData) + Function/Action (OData) |
+| `web/src/store/fleet.js` | `GET /getAllMaintenanceData(...)`<br>`GET /getMachineData(idsuper_tenant=...)`<br>`GET /getMachineDisplayData(idtenant=...)`<br>`GET /getMachineDataByMachine(idmachine=...)`<br>`GET /getReccuringMaintenanceData(idmodel=...,idgroup=...)`<br>`GET /getNextMachineNumber(idgroup=...,idmachine_model=...)`<br>`GET /getMachineIncidentByTenant(idtenant=...)`<br>`POST /makeMaintenanceMissed({id})`<br>`POST /toggleReccuringMaintenance`<br>`POST /notifyFleetUpgrade`<br>`POST /machine_brand`<br>`POST /machine_model`<br>`POST /machine`<br>`PATCH /machine({id})`<br>`POST /machine_time`<br>`GET /machine_type`<br>`GET /machine_time?$filter=...`<br>`POST /machine_maintenance`<br>`PATCH /machine_maintenance({id})`<br>`POST /machine_incident`<br>`PATCH /machine_incident({id})`<br>`POST /machine_model_recurring_maintenance`<br>`PATCH /machine_model_recurring_maintenance({id})`<br>`DELETE /machine_model_recurring_maintenance({id})`<br>`PATCH /machine_part({id})`<br>`GET /user?$filter=...`<br>`GET /currency` | Entity (OData) + Function/Action (OData). Some calls build a dynamic `config.url` and still use legacy base URL. |
+| `web/src/store/setting.js` | `PATCH /user({id})`<br>`PATCH /changePassword`<br>`GET /device`<br>`PATCH /user({id})` (set `is_logged`) | Entity (OData) + Explicit legacy route (`/changePassword`) |
+| `web/src/store/reports.js` | `GET /report?$expand=taggable`<br>`GET /tag_category?$filter=label eq 'Incident'&$expand=tags`<br>`PATCH /group({id})` (update reports) | Entity (OData) |
+| `web/src/store/maps.js` | `GET /device({id})/counters?$select=name,value` | Entity (OData) |
+| `web/src/store/invoice.js` | `GET /getAllInvoices(tenantId=...)`<br>`POST /saveInvoices` | Function/Action (OData) + Explicit legacy route (`/saveInvoices`) |
+| `web/src/store/inventory/deliveries.js` | `DELETE /statement({id})` | Entity (OData) |
+| `web/src/store/insights/gdd-trackers.js` | `GET /site?$filter=...`<br>`GET /product?$filter=...`<br>`GET /product_category?...`<br>`GET /gdd_target_settings?$filter=...`<br>`GET /gdd_target_settings({id})`<br>`GET /getGDDTrackerForSiteArea(...)`<br>`POST /gdd_target_settings`<br>`PATCH /gdd_target_settings({id})`<br>`DELETE /gdd_target_settings({id})` | Entity (OData) + Function/Action (OData) |
+| `web/src/store/insights/performance-metrics.js` | `GET /getTagsByLabelandGroup(idtenant=...,isSurfaceOn=0,label=...)` | Function/Action (OData) |
+| `web/src/store/budgetplanner.js` | `GET /getBudgetPlanData(idtenant=...,year=...)`<br>`GET /getProductForFertilize(idtenant=...)`<br>`GET /fertilization_plan_template?$filter=...`<br>`GET /getFertilizationTemplateData(idfertilization_plan_template=...,year=...)`<br>`GET /company?$filter=...`<br>`POST /budget_plan`<br>`PATCH /budget_plan({id})`<br>`POST /actual_order_plan`<br>`PATCH /actual_order_plan({id})`<br>`PATCH /product({id})`<br>`POST /inventory_ledger` | Entity (OData) + Function/Action (OData) |
+| `web/src/store/fertilisationplanner.js` | `GET /getProductForFertilize(idtenant=...)`<br>`GET /fertilization_plan_template?$filter=...`<br>`GET /getFertilizationPreview(...)`<br>`GET /getFertilizationTemplateData(...)`<br>`POST /fertilization_plan_template`<br>`PATCH /fertilization_plan_template({id})`<br>`DELETE /fertilization_plan_template({id})`<br>`POST /addFertilization`<br>`PATCH /product({id})`<br>`POST /update_product_compostion`<br>`POST /createFertilisationTemplateWithData` | Entity (OData) + Function/Action (OData) |
+| `web/src/store/device.js` | `POST /soil_sensor_configurations` | Entity/Action (OData) |
+| `web/src/store/agronomy/agronomy.js` | `GET /analysisDataNew(...)` (also `...start_date=...end_date=...`) | Function/Action (OData) |
+
+
+---
+
+## 1) Technical description of AS‑IS situation
+
+### 1.1 High-level architecture
+
+**Backend**: Laravel (in `core-2.0/`)
+- Controllers expose endpoints under `/api/v2/...` style routes (routing file not reproduced here; see `core-2.0/routes/...`).
+- Business logic lives in repositories + services.
+- DB uses `binary(16)` UUID storage with helper functions (UuidToBin/UuidFromBin, helper traits).
+
+**Frontend**: Vue (in `web/`)
+- Store layer calls backend via a centralized API wrapper.
+- Schedule editing logic is implemented in composables that generate payloads and merge keys.
+
+**Legacy dependency**: Core 1 (`core/`)
+- Some data still comes from Core 1 via legacy API / OData (notably: some product category/unit lookups and fleet-related data). This is a practical dependency when working on schedule.
+
+### 1.2 Current data model overview (DB)
+
+The schedule domain is represented by multiple tables, but the core ones are:
+
+#### 1.2.1 `task` (legacy schedule table)
+- Stores *both* schedule “parent tasks” and staff/machinery “sub-tasks” as rows.
+- Key columns:
+  - `idtask` BINARY(16)
+  - `idparent_task` BINARY(16) nullable
+  - `merge_key` LONGTEXT (grouping)
+  - `idsite` BINARY(16)
+  - `idaction` BINARY(16)
+  - `idstaff` BINARY(16) nullable
+  - `idmachinery` BINARY(16) nullable
+  - `task_start`, `task_end` timestamps
+  - `estimate_time` int
+  - flags: `is_am`, `is_pm`, `is_over_time`, `is_all`
+  - `task_parameters` MEDIUMTEXT (JSON string)
+
+Functional modeling choices:
+- A “logical task” is represented as *multiple* rows tied by `merge_key`.
+- Staff assignments and machinery assignments are encoded as child rows.
+
+#### 1.2.2 `spraying`
+- Separate table for nutritional inputs / spraying records.
+- Stores compliance and calibration fields (speed, rpm, nozzle, etc.).
+
+#### 1.2.3 `taggable`
+- Join table linking tasks to tags/areas.
+- Inserted for parent and child tasks.
+
+#### 1.2.4 `product_task`
+- Join between schedule tasks and products.
+- Links by `merge_key` (not by idtask).
+- Uses `merge_key_hash = sha256(merge_key)` to avoid indexing issues on LONGTEXT.
+
+#### 1.2.5 `inventory_ledger`
+- Stock movements.
+- For schedule tasks: ledgers reference `merge_key`.
+- For spraying: ledgers reference `idspraying`.
+
+#### 1.2.6 `toil`
+- Time-off-in-lieu / overtime tracking.
+- Can be linked to a task (`toil.idtask`).
+
+### 1.3 AS‑IS backend request/command flow
+
+#### 1.3.1 Create Schedule
+Entry point:
+- `core-2.0/app/Http/Controllers/ScheduleController.php::createSchedule`
+
+Implementation notes:
+- Wraps in a DB transaction with retry on deadlocks.
+- Delegates to `ScheduleRepository::createSchedule($validatedData)`.
+
+Repository create flow (simplified):
+1) generate parent task UUID
+2) insert parent row via `ScheduleService::createOrUpdateScheduleByIdtasks(..., 'create')`
+3) for each staff in `sub_tasks.staffs`:
+   - insert child task row with `idparent_task = parent.idtask` and `idstaff = ...`
+4) for each machinery in `sub_tasks.machineries`:
+   - insert child task row with `idparent_task = parent.idtask` and `idmachinery = ...`
+5) for each created task id (parent + all children) and each area id:
+   - insert into `taggable`
+
+Key functional constraints enforced by request validation (`ScheduleCreateRequest`):
+- `sub_tasks.staffs` is **required array**
+- `areas` is **required array**
+- `merge_key` is required
+
+#### 1.3.2 Update Schedule
+Entry point:
+- `ScheduleController.php::updateTask` (endpoint is `PUT /update-schedule?mergeKey=...&newMergeKey=...`)
+
+Important behavior:
+- Fetches “tasks with products” by mergeKey, then:
+  - Updates task rows
+  - Updates merge_key in `product_task` if merge_key changes
+  - Applies inventory side-effects when running flag toggles
+
+Repository update flow (key details):
+- It loads task IDs for a merge_key in the context of a parent task id via:
+  - `ScheduleService::getTasksByMergeKeyAsArray($mergeKey, $idParentTask)`
+- It compares payload sub_tasks against existing child task rows and:
+  - creates new child rows for newly added staff/machines
+  - deletes child rows that are removed
+- It updates all involved task rows with the new schedule fields
+- It deletes tags for old task IDs and recreates taggables from payload areas
+
+Inventory side-effects:
+- If products exist on the task group:
+  - running 0→1 → inventory consumption
+  - running 1→0 → revert consumption
+
+#### 1.3.3 Delete Schedule
+Entry point:
+- `ScheduleController.php::deleteSchedule($mergeKey)`
+
+Repository delete flow:
+- Select all `task.idtask` where `task.merge_key = <mergeKey>`
+- Delete `taggable` rows for those task IDs
+- Delete all `task` rows for the merge_key
+
+Inventory side-effects:
+- If a task was running/completed and has products, delete schedule triggers a revert inventory adjustment.
+
+#### 1.3.4 Calendar fetch merges tasks + spraying
+Entry point:
+- `ScheduleController.php::getSchedulesForCalender`
+
+Behavior:
+- Fetch tasks by date range (from ScheduleRepository)
+- Fetch spraying by date range (from SprayingRepository)
+- Combine into a single structure by date where each item has:
+  - `type` = 'Task' or 'Spraying'
+  - `action_id`
+  - `green_keepers` summary
+
+Note: Task query groups by `DATE(parent.createdon)`, not by `task_start`. This has implications if created date differs from planned date.
+
+### 1.4 AS‑IS frontend schedule flow
+
+Key files:
+- `web/src/store/schedule/index.js` — API calls
+- `web/src/composables/formatting/schedule/scheduleSaveTasks.js` — constructs payloads and drives create/update/delete sequences
+
+Core concepts:
+- The UI computes whether a merge_key should be regenerated on edit.
+- The UI may execute multiple API calls for what the user sees as a single edit:
+  - update for unchanged site/hole tasks
+  - delete single schedule for removed site/hole
+  - create schedule for newly added sites/holes
+
+This explains why the backend sees repeated create/update operations when users do “simple” edits.
+
+### 1.5 AS‑IS: task dependency model (what exists and what does not)
+
+What exists:
+- **Hierarchy** through `idparent_task` for staff/machinery children.
+- **Grouping** through `merge_key` across multiple parents and children.
+- **Permissions (Hidden)**: Fine-grained access control (e.g., `spraying_create`) is currently **enforced primarily in the Frontend** (hiding UI buttons). The backend services check generic Tenant access but often trust the `group_permission` flags sent or implied by the client context.
+
+What does NOT exist (yet):
+- A true task dependency graph such as `blocked_by`, `depends_on`, predecessor/successor edges.
+- A normalized many-to-many assignment/resource/location model.
+
+### 1.6 AS‑IS pitfalls and correctness issues (technical)
+
+These are “important to know” if you will execute a migration or debug production issues.
+
+1) Event/listener wiring for TOIL automation is missing
+- Backend dispatches `ScheduleOperation` events.
+- A listener `CreateToilRecordListener` exists.
+- But `core-2.0/app/Providers/EventServiceProvider.php` has an empty `$listen` array and `shouldDiscoverEvents()` returns false.
+- Therefore, unless something external wires it, the TOIL automation is effectively dormant.
+
+2) merge_key is LONGTEXT, so many queries use hashing workarounds
+- Example: `mergeKeyExists` uses `UNHEX(MD5(merge_key)) = UNHEX(MD5(?))`.
+- Products use `sha256(merge_key)` stored as `merge_key_hash`.
+
+3) Task rows are overloaded
+- Parent and child rows share a table and many columns are null depending on the row type.
+- This makes validation, indexing, and reporting harder.
+
+---
+
+## 3) Technical description of TO‑BE ideal model (Model 3)
+
+This section defines the target architecture (“Model 3”). It is aligned with the existing unified-task spec in:
+- `docu/design_proposal_unified_tasks_tobe.md`
+- `docu/gap_analysis_codebase_vs_tobe.md`
+
+The intent here is to describe the **ideal technical model** in a way that a developer can implement without relying on tribal knowledge.
+
+### 3.1 Design goals
+
+- **One canonical “Task”** for all scheduled work types (incl. spraying) with a clear type discriminator.
+- **No `merge_key`** as a modeling primitive; relationships move to junction tables.
+- **Normalized graph**:
+  - assignments (staff) are many-to-many
+  - resources (machinery) are many-to-many
+  - locations are one-to-many (multi-site/hole support)
+  - tags/areas are many-to-many
+  - products used are one-to-many (or many-to-many via a line table)
+- **Extensible via core-extension**: domain-specific fields live in dedicated extension tables per task type.
+- **Reporting-friendly**: a denormalized read model (materialized/summary) supports calendar views efficiently.
+- **Migration-safe**: supports dual-write + progressive read switch.
+- **Correctness**: optimistic locking/versioning for concurrent edits.
+
+### 3.2 Recommended TO‑BE schema (Core + Extensions)
+
+#### 3.2.1 Core table: `tasks`
+Recommended properties (minimal + migration critical):
+- `id` BINARY(16) (UUID stored as binary like the rest of Maya)
+- tenancy: `idgroup` (**Required Partition Key**).
+  - *Why*: Tasks belong to a specific operational site/group. `idtenant` can be derived, but `idgroup` is the strict boundary.
+- `type_id` (task type discriminator, e.g. GENERAL / SPRAYING / LEAVE)
+- `action_id` (maps legacy `idaction`)
+- `title` (maps legacy `name`)
+- planned window: `planned_start_at`, `planned_end_at`, `planned_minutes`
+- actual window: `started_at`, `ended_at`
+- `status` (draft/planned/running/done/cancelled)
+- `notes` (maps legacy `note`)
+- `cancellation_reason` (maps legacy `reason`)
+- `parameters` JSON (maps legacy `task_parameters` JSON string)
+- `task_number` (display-friendly identifier; maps `task_number` / `spraying_no` semantics)
+- `version` INT (optimistic locking; increments on update)
+- audit: `created_at`, `updated_at`, `created_by`
+
+Migration-only compatibility fields (remove after deprecation):
+- `legacy_merge_key` (string, nullable)
+- `legacy_task_id` (BINARY(16), nullable) and/or `legacy_spraying_id` (BINARY(16), nullable)
+
+#### 3.2.2 Locations: `task_locations`
+Represents where work is performed.
+- `task_id`
+- `site_id`
+- optional: `hole_id` or `sub_site_id`
+
+Notes:
+- A single task may have multiple locations; this replaces the “split into multiple parent task rows” behavior.
+- If the UI continues to behave “one parent row per site”, implement a read model that still emits that shape while the write model remains normalized.
+
+#### 3.2.3 Areas/tags: `task_tags` (or `task_areas`)
+- `task_id`
+- `tag_id`
+
+#### 3.2.4 Staff assignments: `task_assignments`
+- `task_id`
+- `user_id`
+- `role` (lead/support/operator)
+- `is_overtime` (per assignment)
+- planned minutes / actual minutes (optional)
+
+Notes:
+- This is the canonical replacement for staff child rows + `merge_key` grouping.
+
+#### 3.2.5 Resources: `task_resources`
+- `task_id`
+- `resource_id` (machine, implement, vehicle)
+
+Optionally add compliance mapping:
+- `task_resource_operators` linking resources to operator users per task.
+
+Notes:
+- This is the canonical replacement for machinery child rows + `merge_key` grouping.
+
+#### 3.2.6 Products usage: `task_products`
+Replace the merge_key-based `product_task`.
+- `task_id`
+- `product_id`
+- `quantity`
+- `unit`
+
+Notes:
+- This should be the only place product usage is written post-cutover.
+- During migration, `product_task` can be backfilled into this table using `legacy_merge_key` mapping.
+
+#### 3.2.7 Extensions
+Use a core-extension model for special domains.
+
+Example:
+- `task_ext_nutritional` (spraying-specific)
+  - `task_id`
+  - product, dosage, calibration fields, weather snapshot, compliance fields
+
+- `task_ext_leave` (leave/time off)
+  - `task_id`
+  - leave type, approval status, etc.
+
+Scope note (recommended):
+- v1 (unified tasks) should cover: core tasks + assignments + resources + locations + nutritional extension.
+- v2 can cover: TOIL migration and template/routine systems.
+
+This matches the “keep separate for stability” guidance in `docu/design_proposal_unified_tasks_tobe.md`.
+
+### 3.3 Backend architecture (recommended)
+
+- Controllers should be thin: `TaskController` with `index/store/update/show`.
+- Core logic in a service: `TaskService` that:
+  - persists the core task row (and enforces optimistic locking on update)
+  - syncs assignments/resources/locations/tags/products
+  - delegates extension-specific validation + persistence to a handler strategy
+
+Recommended type handler contract:
+- `TaskExtensionHandler::validate(array $extensionData)`
+- `TaskExtensionHandler::create(Task $task, array $extensionData)`
+- `TaskExtensionHandler::update(Task $task, array $extensionData)`
+
+This keeps “spraying math / compliance validation” out of the controller.
+
+### 3.4 API surface (Model 3)
+
+Model 3 should expose a single, predictable API that can fully drive schedule/day-plan UIs.
+
+Minimum endpoints:
+- `GET /api/v2/tasks?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&include=assignments,resources,locations,extension`
+- `POST /api/v2/tasks` (create)
+- `PATCH /api/v2/tasks/{id}` (update)
+
+Design intent:
+- The response should be “UI ready” without requiring the frontend to stitch together 3+ different APIs.
+- `include=` should use eager loading to avoid N+1 queries.
+
+### 3.5 Reporting strategy
+
+For fast schedule/calendar/report queries:
+- Add a derived table (materialized) like `summary_tasks` that denormalizes:
+  - task core fields
+  - staff count / assigned staff summary
+  - total planned minutes
+  - site/area summaries
+  - cost/stock consumption summaries
+
+Populate via:
+- async jobs on write
+- or periodic recomputation
+
+---
+
+## 4) Strategy to go from Model 2 → Model 3
+
+This section replaces the older wording “AS‑IS → TO‑BE” with the model numbering:
+- **Model 2** = today’s behavior (Core 2.0 schedule + separate spraying + legacy merge_key patterns + remaining Core 1 dependencies)
+- **Model 3** = unified tasks (core + extensions + junction tables)
+
+The plan below is designed for **minimal downtime** and supports progressive rollout.
+
+---
+
+### Phase 0 — Groundwork and explicit decisions (1–2 days)
+
+1) Confirm source-of-truth flows (what writes what)
+- Identify the exact schedule UI entry points (already: `scheduleSaveTasks.js`).
+- Identify which backend endpoints are used in production.
+
+2) Tenancy key chosen: `idgroup`
+- **Decision**: Use `idgroup` (Operational Unit / Site) as the partition key.
+- Rationale: Work happens at a site. Access is scoped to a site. `idtenant` can always be resolved from group, but partitioning by Tenant would co-mingle data sets from different sites (e.g. Golf Course A vs Course B).
+
+3) Decide migration approach for IDs
+- Recommended: new `tasks.id` generated as UUID (binary) and store `legacy_merge_key` for mapping during transition.
+- Decide whether you need `legacy_task_id` / `legacy_spraying_id` columns for traceability.
+
+Deliverables:
+- a small “mapping spec” documenting how each old entity maps to the new schema.
+
+### Phase 1 — Introduce Model 3 schema (no behavior change)
+
+1) Create new migrations in `core-2.0/database/migrations/` to add:
+- `tasks`
+- `task_assignments`
+- `task_resources`
+- `task_locations`
+- `task_tags`
+- `task_products`
+- `task_ext_nutritional`
+
+2) Ensure UUID binary helpers are reused
+- follow existing patterns (UuidToBin/UuidFromBin conversions).
+
+Acceptance criteria:
+- migrations run cleanly
+- no existing endpoints change
+
+### Phase 2 — Implement unified write path (internal API)
+
+Add new service layer code without switching UI yet:
+
+1) Create a `TaskService` that can create a unified task from a normalized payload.
+
+2) Add internal adapter that converts AS‑IS payload into TO‑BE writes
+
+Pseudo mapping from schedule create payload to new tables:
+- Create core `tasks` row
+  - `legacy_merge_key = payload.merge_key`
+  - `action_id = payload.idaction`
+  - planned timing from `task_start/task_end/estimate_time`
+- Create `task_locations` row for the `idsite` of that payload
+- Create `task_tags` rows for `areas[]`
+- Create `task_assignments` from `sub_tasks.staffs[]`
+- Create `task_resources` from `sub_tasks.machineries[]`
+
+3) Implement unified spraying creation similarly
+- Create `tasks` row with `type_id = SPRAYING`
+- Populate `task_ext_nutritional`
+- Add assignments/resources/locations
+
+Acceptance criteria:
+- can create TO‑BE task records in parallel without breaking old behavior
+
+### Phase 3 — Dual-write (zero downtime)
+
+Goal: whenever AS‑IS endpoints write, also write TO‑BE.
+
+1) Update `ScheduleController::createSchedule/updateTask/deleteSchedule` to:
+- execute legacy write as today
+- then call a TO‑BE sync component
+  - synchronous (within transaction) if safe
+  - or queued job if you want to decouple latency
+
+2) Update `SprayingRepository` write paths to also write unified tasks
+
+Important design choice:
+- Prefer “write TO‑BE after legacy commit” to avoid locking and rollback complexity.
+- If you need strong consistency, write both within the same transaction, but this increases deadlock risk.
+
+Acceptance criteria:
+- every new/updated/deleted schedule is mirrored to new tables
+
+### Phase 4 — Bulk backfill (historical parity)
+
+You need to migrate existing history.
+
+#### 4.1 Tasks backfill (group by merge_key)
+Algorithm:
+1) Fetch all distinct `merge_key` values from `task` table
+2) For each merge_key:
+   - Determine the set of parent rows: `idparent_task IS NULL`
+   - For each parent row:
+     - Create one unified `tasks` record representing that parent schedule entry
+       - store `legacy_merge_key`
+       - map `idsite`, `idaction`, planned times
+     - Create `task_assignments` from child rows having `idstaff`
+     - Create `task_resources` from child rows having `idmachinery`
+     - Create `task_tags` by reading `taggable` rows for the parent (or for all rows in the cluster)
+
+This choice—“one unified task per parent row”—matches current UI reality where multi-site tasks produce multiple parent rows.
+
+Alternative (ideal) approach:
+- One unified task per legacy merge_key cluster, with multiple `task_locations`.
+- Prefer this only if the frontend has been migrated to Model 3 reads (so the UI no longer expects “one row per parent”).
+
+#### 4.2 Products migration
+For each legacy merge_key:
+- read `product_task` rows by `merge_key_hash`
+- write to `task_products` for the corresponding new `tasks.id`
+
+#### 4.3 Inventory ledger bridging
+During transition, you will have legacy ledger rows keyed by merge_key.
+
+Options:
+- Keep legacy ledger as-is and only generate unified ledger for new tasks after cutover
+- Or create a mapping table `legacy_merge_key -> new_task_id` and backfill a `task_id` column in ledger
+
+Recommendation:
+- Add a `task_id` nullable column to `inventory_ledger` and populate it in backfill.
+
+#### 4.4 Spraying migration
+- Create unified tasks with `type_id = SPRAYING`
+- Create `task_ext_nutritional` rows from `spraying`
+- Link product usage to `task_products` as needed
+
+### Phase 5 — Switch reads behind a feature flag
+
+Goal: UI reads from unified endpoints while legacy endpoints remain available.
+
+Steps:
+1) Implement `GET /api/v2/tasks` with range filters and includes (assignments/resources/locations/extension)
+2) Update frontend store to use unified endpoint when feature flag enabled
+3) Compare the UI output between old and new endpoints
+
+Validation approach:
+- Run both reads in parallel in staging and diff:
+  - counts per day
+  - staff assignments per day
+  - product totals
+  - spraying counts
+
+Core 1 note:
+- Model 3 read switch does **not** automatically remove Core 1 usage.
+- Track Core 1 dependencies from Appendix A as a separate cutover checklist.
+
+### Phase 6 — Deprecate Model 2 writes and cleanup
+
+Once parity is validated:
+- Freeze legacy `task` and `spraying` writes (read-only mode) or remove UI paths
+- Stop dual-write
+- Migrate remaining consumers (reports)
+- Remove `merge_key` coupling from products
+
+---
+
+## 5) Concrete “developer checklist” to execute the plan
+
+---
+
+This checklist is intended as the day-to-day execution guide.
+
+1) Create new migrations
+- Add new tables listed in Phase 1
+
+2) Implement `TaskService` and DTOs
+- Define normalized payload structures
+- Implement transaction boundaries and validation
+
+3) Implement TO‑BE controllers and routes
+- `POST /api/v2/tasks`
+- `PATCH /api/v2/tasks/{id}`
+- `GET /api/v2/tasks`
+
+4) Implement adapters for dual-write
+- schedule adapter: legacy payload → new normalized DTO
+- spraying adapter
+
+5) Backfill command
+- Implement `php artisan migrate:unified_tasks`:
+  - chunk by merge_key
+  - idempotent behavior (safe re-run)
+  - metrics output (counts)
+
+6) Build validation SQL scripts
+Examples to prepare:
+- count by day (legacy vs unified)
+- staff assignment counts
+- product usage totals
+
+7) Frontend switch
+- add feature flag
+- update store to call unified endpoints
+- keep legacy fallback
+
+---
+
+## 6) Open questions (you should decide before coding)
+
+1) What is the canonical date for schedule grouping?
+- legacy uses `createdon` heavily; planned date may differ.
+
+2) Do you want one unified task per parent row, or one per merge_key cluster?
+- current UI behavior suggests “one per parent row” is safer.
+
+3) What is the authoritative source for areas?
+- tags are attached to parent + children today; TO‑BE should attach areas once per task.
+
+4) How should TOIL be modeled TO‑BE?
+- as an extension
+- or as assignment-level overtime minutes
+
+---
+
+## 7) References in this repo
+
+Existing internal docs that informed this:
+- `/docu/db_investigation_tasks_asit.md`
+- `/docu/code_usage_and_design.md`
+- `/docu/design_proposal_unified_tasks_tobe.md`
+- `/docu/functional_requirements_specification.md`
+
+Key code entry points:
+- `core-2.0/app/Http/Controllers/ScheduleController.php`
+- `core-2.0/app/Repositories/ScheduleRepository.php`
+- `core-2.0/app/Services/ScheduleService.php`
+- `web/src/store/schedule/index.js`
+- `web/src/composables/formatting/schedule/scheduleSaveTasks.js`
