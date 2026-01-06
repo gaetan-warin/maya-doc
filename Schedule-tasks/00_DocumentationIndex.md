@@ -37,8 +37,14 @@ doc/final/
 ├── 04_MigrationPlaybook.md           ← Transition Strategy (AS-IS → TO-BE)
 │                                         Audience: Tech Leads, DevOps
 │
-└── 05_APIContractSpecification.md    ← API Surface & Payload Contracts
-                                          Audience: Frontend & Backend Developers
+├── 05_APIContractSpecification.md    ← API Surface & Payload Contracts
+│                                         Audience: Frontend & Backend Developers
+│
+├── 06_FieldMapping_Reference.md      ← Field Mapping Reference
+│                                         Audience: Developers, Data Engineers
+│
+└── 07_ProjectPlan_Timeline.md        ← Project Plan & Timeline
+                                          Audience: Project Managers, Tech Leads
 ```
 
 ---

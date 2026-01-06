@@ -151,6 +151,31 @@ A **completely separate table** for Nutritional Inputs.
 
 > **⚠️ Siloed Data:** Tasks and Spraying are in separate tables, making unified reporting difficult.
 
+### 3.6 Report Follow-up Table: `report_followup`
+
+Stores follow-up actions created from reports or completed tasks.
+
+| Column | Type | Purpose |
+| :--- | :--- | :--- |
+| `id` | BINARY(16) | Primary Key (UUID). |
+| `report_id` | BINARY(16) | FK to parent report. |
+| `task_id` | BINARY(16) | FK to related task (optional). |
+| `description` | TEXT | Description of the follow-up action required. |
+| `assignee_id` | BINARY(16) | FK to staff member responsible. |
+| `due_date` | DATE | Target completion date. |
+| `priority` | ENUM | Priority level (low, medium, high, critical). |
+| `status` | ENUM | Current status (open, in_progress, completed, overdue). |
+| `completed_at` | TIMESTAMP | When the follow-up was completed. |
+| `completed_by` | BINARY(16) | FK to user who completed it. |
+| `created_at` | TIMESTAMP | Creation timestamp. |
+| `created_by` | BINARY(16) | FK to user who created the follow-up. |
+
+> **⚠️ Issue:** Follow-ups are currently stored in a separate table with direct FK to `report_id`. This creates challenges:
+> - Follow-ups are not visible in the unified task calendar
+> - No integration with task scheduling workflow
+> - Separate queries required to fetch follow-ups alongside tasks
+> - Cannot leverage task-related features (staff assignment tracking, time logging)
+
 ---
 
 ## 4. The `merge_key` Problem

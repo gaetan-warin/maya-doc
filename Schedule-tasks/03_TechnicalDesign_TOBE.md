@@ -37,7 +37,7 @@ In the TO-BE model, a single user-facing "Task" is represented by **one row** in
 The backend becomes the **source of truth** for task identity. The frontend no longer generates the grouping key.
 
 ### 2.3 Type Discrimination
-A single `tasks` table supports multiple task types (General, Spraying, Leave) via a `type_id` discriminator. Domain-specific fields live in extension tables.
+A single `tasks` table supports multiple task types (General, Spraying, Leave, Follow-up) via a `type_id` discriminator. Domain-specific fields live in extension tables.
 
 ---
 
@@ -51,7 +51,7 @@ The single source of truth for all scheduled work.
 CREATE TABLE tasks (
     id              BINARY(16) PRIMARY KEY,      -- UUID
     idgroup         BINARY(16) NOT NULL,         -- Partition Key (Operational Unit)
-    type_id         VARCHAR(32) NOT NULL,        -- e.g., 'GENERAL', 'SPRAYING', 'LEAVE'
+    type_id         VARCHAR(32) NOT NULL,        -- e.g., 'GENERAL', 'SPRAYING', 'LEAVE', 'FOLLOWUP'
     action_id       BINARY(16),                  -- FK to actions table
     title           VARCHAR(255),                -- Display name
     planned_start   DATETIME,                    -- Planned start time
@@ -167,6 +167,33 @@ CREATE TABLE task_ext_nutritional (
 );
 ```
 
+### 3.8 Extension: `task_ext_followup` (Report Follow-up)
+
+Domain-specific fields for Follow-up actions created from reports.
+
+```sql
+CREATE TABLE task_ext_followup (
+    task_id             BINARY(16) PRIMARY KEY,      -- FK to tasks
+    parent_report_id    BINARY(16),                  -- FK to source report
+    parent_task_id      BINARY(16),                  -- FK to source task (alternative parent)
+    priority            ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') DEFAULT 'MEDIUM',
+    due_date            DATE NOT NULL,               -- Target completion date
+    completed_at        TIMESTAMP,                   -- When the follow-up was completed
+    completed_by        BINARY(16),                  -- FK to user who completed it
+    followup_notes      TEXT,                        -- Additional notes specific to follow-up
+
+    INDEX idx_followup_due_date (due_date),
+    INDEX idx_followup_parent_report (parent_report_id),
+    INDEX idx_followup_parent_task (parent_task_id)
+);
+```
+
+> **Design Note:** Follow-ups are unified into the `tasks` table with `type_id = 'FOLLOWUP'`. This enables:
+> - Follow-ups visible in the calendar alongside regular tasks
+> - Staff assignments via `task_assignments` (the assignee)
+> - Consistent status workflow (PLANNED → RUNNING → COMPLETED)
+> - Integration with existing task infrastructure
+
 ---
 
 ## 4. Entity Relationship Diagram (ERD)
@@ -195,12 +222,12 @@ CREATE TABLE task_ext_nutritional (
 └─────────────────┘ └─────────────────┘ │ is_overtime     │ └─────────────────┘ └─────────────────┘
                                         └─────────────────┘
 
-         ┌───────────────────────────────┐
-         │     task_ext_nutritional      │
-         │───────────────────────────────│
-         │ task_id (PK/FK)               │
-         │ nozzle_type_id, speed, rpm... │
-         └───────────────────────────────┘
+         ┌───────────────────────────────┐       ┌───────────────────────────────┐
+         │     task_ext_nutritional      │       │     task_ext_followup         │
+         │───────────────────────────────│       │───────────────────────────────│
+         │ task_id (PK/FK)               │       │ task_id (PK/FK)               │
+         │ nozzle_type_id, speed, rpm... │       │ parent_report_id, priority... │
+         └───────────────────────────────┘       └───────────────────────────────┘
 ```
 
 ---
@@ -302,12 +329,12 @@ The TO-BE API should be RESTful, predictable, and support eager loading.
 │  - Delegates to extension handlers             │
 └───────────────────────┬────────────────────────┘
                         │
-        ┌───────────────┼───────────────┐
-        ▼               ▼               ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│ NutritionalExt│ │ LeaveExtension│ │ (Future...)   │
-│ Handler       │ │ Handler       │ │               │
-└───────────────┘ └───────────────┘ └───────────────┘
+        ┌───────────────┼───────────────┬───────────────┐
+        ▼               ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│ NutritionalExt│ │ LeaveExtension│ │ FollowupExt   │ │ (Future...)   │
+│ Handler       │ │ Handler       │ │ Handler       │ │               │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
 ### 6.2 Extension Handler Contract
@@ -356,3 +383,13 @@ These fields should be **removed** after the migration is complete and validated
 ### ADR-004: Extension Tables for Domain-Specific Data
 **Decision:** Use `task_ext_*` tables instead of a polymorphic `parameters` JSON blob for critical fields.
 **Rationale:** Enables proper validation, indexing, and schema enforcement for compliance-critical data (e.g., Spraying).
+
+### ADR-005: Report Follow-ups as Unified Tasks
+**Decision:** Migrate follow-up actions from the separate `report_followup` table to the unified `tasks` table with `type_id = 'FOLLOWUP'`.
+**Rationale:**
+- Follow-ups become visible in the scheduling calendar alongside regular tasks
+- Assignees are tracked via `task_assignments` (consistent with task staff assignment)
+- Status workflow is unified (PLANNED/OPEN → RUNNING/IN_PROGRESS → COMPLETED)
+- Due dates use `planned_start` field for calendar visibility
+- Parent report/task linkage maintained via `task_ext_followup` extension table
+- Enables follow-up filtering, reporting, and analytics using existing task infrastructure

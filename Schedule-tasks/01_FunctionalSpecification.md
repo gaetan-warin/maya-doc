@@ -29,6 +29,7 @@ This specification is designed to:
 *   **Nutritional Inputs (Spraying):** Recording of spraying/fertilization activities.
 *   **Inventory Consumption:** Linking products to tasks and automated stock deduction.
 *   **Time & Labor Management (TOIL):** Recording of overtime and time-off-in-lieu.
+*   **Report Follow-up:** Creation and tracking of follow-up actions from reports/tasks.
 
 **Out of Scope:**
 *   Fleet Management (Machines, Maintenance) — separate module.
@@ -51,6 +52,7 @@ This specification is designed to:
 | **Area (Tag)** | A granular work zone attribute applied to tasks (e.g., "Greens", "Fairways"). |
 | **Spraying** | A specialized task for nutritional inputs with compliance/calibration data. |
 | **TOIL (Time Off In Lieu)** | Accrued time off granted for overtime work. |
+| **Follow-up** | A discrete action item created from a report or task requiring further attention. |
 
 ---
 
@@ -119,6 +121,25 @@ This specification is designed to:
 | **FR-WM-02** | TOIL records shall be linked to the originating Task. |
 | **FR-WM-03** | Users shall be able to view TOIL balances per staff member. |
 
+### 4.6 Report Follow-up
+
+| ID | Requirement |
+| :--- | :--- |
+| **FR-FU-01** | The system shall allow users to create follow-up actions from any completed report or task. |
+| **FR-FU-02** | A follow-up action must have a **Description** explaining the required action. |
+| **FR-FU-03** | A follow-up action must have an **Assignee** (staff member responsible). |
+| **FR-FU-04** | A follow-up action must have a **Due Date**. |
+| **FR-FU-05** | A follow-up action may have a **Priority** level (Low, Medium, High, Critical). |
+| **FR-FU-06** | A follow-up action shall maintain a reference to its **Parent Report/Task**. |
+| **FR-FU-07** | Users shall be able to create multiple follow-up actions for a single report. |
+| **FR-FU-08** | A follow-up action shall have a **Status** (Open, In Progress, Completed, Overdue). |
+| **FR-FU-09** | New follow-up actions shall default to **Open** status. |
+| **FR-FU-10** | The system shall automatically mark follow-ups as **Overdue** when the due date passes. |
+| **FR-FU-11** | Users shall be able to edit follow-up details (description, assignee, due date, priority). |
+| **FR-FU-12** | Users shall be able to add **Notes** or comments to a follow-up action. |
+| **FR-FU-13** | Users shall be able to filter follow-ups by status, priority, due date, and assignee. |
+| **FR-FU-14** | Follow-ups shall be visible on the scheduling calendar on their due dates. |
+
 ---
 
 ## 5. Business Rules
@@ -133,6 +154,10 @@ These rules define the constraints that must be enforced by the system.
 | **BR-04** | Deleting a Running/Completed Task shall reverse its inventory impact. | Maintains ledger integrity. |
 | **BR-05** | Spraying records require compliance fields for regulatory traceability. | Health & Safety / Legal requirement. |
 | **BR-06** | A Task's planned date is determined by its **Created On** date in the current system. | Legacy behavior to be aware of. |
+| **BR-07** | A follow-up cannot be created without a parent report or task. | Ensures traceability. |
+| **BR-08** | A follow-up cannot be created without an assignee. | Work must be attributed. |
+| **BR-09** | Completed follow-ups cannot be edited (except notes). | Maintains audit integrity. |
+| **BR-10** | Only the assignee or a manager can mark a follow-up as completed. | Authorization control. |
 
 ---
 
@@ -195,6 +220,41 @@ These rules define the constraints that must be enforced by the system.
 6.  User enters **Weather Conditions** (optional).
 7.  User saves the record.
 8.  System persists the Spraying record and deducts inventory.
+
+---
+
+### UC-04: Create Follow-up from Report
+
+**Actor:** Course Manager
+**Goal:** Create a follow-up action for an issue discovered during inspection.
+**Preconditions:** A report or completed task exists.
+
+**Main Flow:**
+1.  User views a completed report or task.
+2.  User identifies an issue requiring follow-up.
+3.  User clicks "Add Follow-up".
+4.  User enters a description of the required action.
+5.  User assigns a staff member.
+6.  User sets a due date.
+7.  User optionally sets priority level.
+8.  User saves the follow-up.
+9.  System persists the follow-up and displays it in the report's follow-up list.
+
+---
+
+### UC-05: Complete a Follow-up
+
+**Actor:** Head Greenkeeper
+**Goal:** Mark a follow-up action as completed.
+**Preconditions:** User is assigned to the follow-up.
+
+**Main Flow:**
+1.  User views their assigned follow-ups.
+2.  User selects the completed follow-up.
+3.  User clicks "Mark Complete".
+4.  System records completion timestamp and user.
+5.  System updates status to Completed.
+6.  Follow-up no longer appears in active lists.
 
 ---
 

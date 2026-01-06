@@ -281,7 +281,95 @@ private function processCluster(string $mergeKey) {
 // 3. Map locations, tags, products
 ```
 
-### 5.5 Acceptance Criteria
+### 5.5 Migrate Report Follow-ups
+
+Follow-up actions are migrated from the separate `report_followup` table to the unified `tasks` table.
+
+```php
+// app/Console/Commands/BackfillFollowups.php
+
+public function handle() {
+    $followups = DB::table('report_followup')->cursor();
+
+    foreach ($followups as $followup) {
+        // 1. Check if already migrated (idempotent)
+        if ($this->alreadyMigrated($followup->id)) {
+            continue;
+        }
+
+        // 2. Create unified task with type_id = 'FOLLOWUP'
+        $taskId = Str::uuid();
+
+        DB::table('tasks')->insert([
+            'id' => $taskId,
+            'idgroup' => $this->getGroupFromReport($followup->report_id),
+            'type_id' => 'FOLLOWUP',
+            'action_id' => null,                    // Follow-ups don't have actions
+            'title' => Str::limit($followup->description, 255),
+            'planned_start' => $followup->due_date, // Due date becomes planned_start for calendar
+            'planned_end' => $followup->due_date,
+            'status' => $this->mapFollowupStatus($followup->status),
+            'notes' => $followup->description,
+            'created_at' => $followup->created_at,
+            'updated_at' => now(),
+            'created_by' => $followup->created_by,
+            'legacy_followup_id' => $followup->id,  // For traceability
+        ]);
+
+        // 3. Create extension row with follow-up specific data
+        DB::table('task_ext_followup')->insert([
+            'task_id' => $taskId,
+            'parent_report_id' => $followup->report_id,
+            'parent_task_id' => $followup->task_id,
+            'priority' => strtoupper($followup->priority),
+            'due_date' => $followup->due_date,
+            'completed_at' => $followup->completed_at,
+            'completed_by' => $followup->completed_by,
+        ]);
+
+        // 4. Create assignment for the assignee
+        if ($followup->assignee_id) {
+            DB::table('task_assignments')->insert([
+                'id' => Str::uuid(),
+                'task_id' => $taskId,
+                'user_id' => $followup->assignee_id,
+                'role' => 'ASSIGNEE',
+            ]);
+        }
+
+        Log::info("Migrated follow-up {$followup->id} to task {$taskId}");
+    }
+}
+
+private function mapFollowupStatus(string $legacyStatus): string {
+    return match($legacyStatus) {
+        'open' => 'PLANNED',
+        'in_progress' => 'RUNNING',
+        'completed' => 'COMPLETED',
+        'overdue' => 'PLANNED',  // Overdue is still an open task
+        default => 'PLANNED',
+    };
+}
+```
+
+#### Follow-up Field Mapping
+
+| Legacy Field (`report_followup`) | Target Field |
+| :--- | :--- |
+| `id` | `tasks.legacy_followup_id` (new compatibility field) |
+| `report_id` | `task_ext_followup.parent_report_id` |
+| `task_id` | `task_ext_followup.parent_task_id` |
+| `description` | `tasks.notes` + `tasks.title` (truncated) |
+| `assignee_id` | `task_assignments.user_id` (role = 'ASSIGNEE') |
+| `due_date` | `tasks.planned_start` + `task_ext_followup.due_date` |
+| `priority` | `task_ext_followup.priority` |
+| `status` | `tasks.status` (mapped: open→PLANNED, etc.) |
+| `completed_at` | `task_ext_followup.completed_at` |
+| `completed_by` | `task_ext_followup.completed_by` |
+| `created_at` | `tasks.created_at` |
+| `created_by` | `tasks.created_by` |
+
+### 5.6 Acceptance Criteria
 
 - [ ] Command is idempotent (safe to re-run).
 - [ ] Metrics output: total processed, total created, total skipped.
@@ -311,9 +399,23 @@ SELECT
     (SELECT COUNT(*) FROM task_assignments) AS unified_assignments;
 
 -- Product link comparison
-SELECT 
+SELECT
     (SELECT COUNT(*) FROM product_task) AS legacy_product_links,
     (SELECT COUNT(*) FROM task_products) AS unified_product_links;
+
+-- Follow-up comparison
+SELECT
+    (SELECT COUNT(*) FROM report_followup) AS legacy_followups,
+    (SELECT COUNT(*) FROM tasks WHERE type_id = 'FOLLOWUP') AS unified_followups;
+
+-- Follow-up status verification
+SELECT
+    rf.status AS legacy_status,
+    t.status AS unified_status,
+    COUNT(*) AS count
+FROM report_followup rf
+JOIN tasks t ON t.legacy_followup_id = rf.id
+GROUP BY rf.status, t.status;
 ```
 
 ### 6.2 Implement V3 Read Endpoint
@@ -389,12 +491,14 @@ CREATE TABLE archive_task AS SELECT * FROM task;
 CREATE TABLE archive_spraying AS SELECT * FROM spraying;
 CREATE TABLE archive_taggable AS SELECT * FROM taggable;
 CREATE TABLE archive_product_task AS SELECT * FROM product_task;
+CREATE TABLE archive_report_followup AS SELECT * FROM report_followup;
 
 -- After validation period (30 days), drop legacy tables
 DROP TABLE task;
 DROP TABLE spraying;
 DROP TABLE taggable;
 DROP TABLE product_task;
+DROP TABLE report_followup;
 ```
 
 ### 7.3 Remove Legacy Compatibility Fields
@@ -442,9 +546,12 @@ If critical issues are discovered:
 | **2** | Implement TaskService | Backend | ☐ |
 | **2** | Add dual-write to Schedule endpoints | Backend | ☐ |
 | **2** | Add dual-write to Spraying endpoints | Backend | ☐ |
-| **3** | Implement backfill command | Backend | ☐ |
+| **2** | Add dual-write to Follow-up endpoints | Backend | ☐ |
+| **3** | Implement backfill command (Tasks) | Backend | ☐ |
+| **3** | Implement backfill command (Follow-ups) | Backend | ☐ |
 | **3** | Run backfill on staging | DevOps | ☐ |
-| **3** | Validate data parity | QA | ☐ |
+| **3** | Validate data parity (Tasks) | QA | ☐ |
+| **3** | Validate data parity (Follow-ups) | QA | ☐ |
 | **4** | Implement V3 read endpoint | Backend | ☐ |
 | **4** | Add feature flag | Backend | ☐ |
 | **4** | Update frontend for V3 | Frontend | ☐ |
