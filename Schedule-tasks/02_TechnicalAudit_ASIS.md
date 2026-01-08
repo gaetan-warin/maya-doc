@@ -153,6 +153,37 @@ A **completely separate table** for Nutritional Inputs.
 
 ---
 
+### 3.6 Follow-up Records: `report_follow_up`
+
+Tracks follow-up actions required after an incident report.
+
+| Column | Type | Purpose |
+| :--- | :--- | :--- |
+| `idreport_follow_up` | INT | Primary Key. |
+| `idreport` | BINARY(16) | Link to the parent Incident Report. |
+| `iduser` | INT | The user assigned to the follow-up. |
+| `date` | DATE/DATETIME | Scheduled date for the follow-up. |
+| `comment` | TEXT | Description/Notes. |
+| `status` | VARCHAR | Status (e.g., 'todo', 'completed'). |
+| `total_cost` | DECIMAL | Cost incurrence. |
+| `total_duration` | TIME | Execution time. |
+
+> **⚠️ Inconsistent Schema:**
+> - Uses `INT` Primary Key instead of UUID (unlike `task` or `report`).
+> - `total_duration` uses `TIME` type, whereas tasks use `INT` (minutes).
+
+#### 3.6.1 Images: `report_follow_up_image`
+
+Simple link table for evidence photos.
+
+| Column | Type | Purpose |
+| :--- | :--- | :--- |
+| `id` | INT | Primary Key. |
+| `idreport_follow_up` | INT | Foreign Key. |
+| `image_url` | VARCHAR | S3/Local path to image. |
+
+---
+
 ## 4. The `merge_key` Problem
 
 The `merge_key` is the system's central (and most problematic) concept.

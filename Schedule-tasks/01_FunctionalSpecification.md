@@ -29,11 +29,13 @@ This specification is designed to:
 *   **Nutritional Inputs (Spraying):** Recording of spraying/fertilization activities.
 *   **Inventory Consumption:** Linking products to tasks and automated stock deduction.
 *   **Time & Labor Management (TOIL):** Recording of overtime and time-off-in-lieu.
+*   **Incident Report Follow-ups:** Scheduling and tracking remediation actions for reported incidents.
 
 **Out of Scope:**
 *   Fleet Management (Machines, Maintenance) — separate module.
 *   Weather & Environmental Monitoring — separate module.
 *   Financial Reporting & Invoicing — separate module.
+*   Incident Report Creation — separate module (Reports); only follow-up scheduling is in scope.
 
 ---
 
@@ -51,6 +53,8 @@ This specification is designed to:
 | **Area (Tag)** | A granular work zone attribute applied to tasks (e.g., "Greens", "Fairways"). |
 | **Spraying** | A specialized task for nutritional inputs with compliance/calibration data. |
 | **TOIL (Time Off In Lieu)** | Accrued time off granted for overtime work. |
+| **Follow-up** | A scheduled remediation task linked to an Incident Report. |
+| **Incident Report** | A record of an issue or problem identified on the grounds (e.g., damage, hazard). |
 
 ---
 
@@ -119,6 +123,21 @@ This specification is designed to:
 | **FR-WM-02** | TOIL records shall be linked to the originating Task. |
 | **FR-WM-03** | Users shall be able to view TOIL balances per staff member. |
 
+### 4.6 Incident Report Follow-ups
+
+| ID | Requirement |
+| :--- | :--- |
+| **FR-FU-01** | The system shall support a **Follow-up** task type linked to an Incident Report. |
+| **FR-FU-02** | A Follow-up must be associated with exactly one **Incident Report**. |
+| **FR-FU-03** | A Follow-up shall have a **Scheduled Date** for when the remediation should occur. |
+| **FR-FU-04** | A Follow-up may have one **Staff** member assigned to perform the remediation. |
+| **FR-FU-05** | A Follow-up shall have a **Status** (To Do, Completed). |
+| **FR-FU-06** | Follow-ups shall be visible in the Calendar view alongside regular Tasks and Spraying records. |
+| **FR-FU-07** | When completing a Follow-up, users shall be able to record: **Date of Action**, **Cost**, **Duration**, **Notes**, and **Images**. |
+| **FR-FU-08** | Follow-up completion images serve as evidence/documentation of the remediation work. |
+| **FR-FU-09** | When a Follow-up status changes to **Completed**, the parent Incident Report's follow-up status shall be updated. |
+| **FR-FU-10** | Overdue Follow-ups (past scheduled date, still "To Do") shall be automatically rescheduled to the current date by a daily system job. |
+
 ---
 
 ## 5. Business Rules
@@ -133,6 +152,10 @@ These rules define the constraints that must be enforced by the system.
 | **BR-04** | Deleting a Running/Completed Task shall reverse its inventory impact. | Maintains ledger integrity. |
 | **BR-05** | Spraying records require compliance fields for regulatory traceability. | Health & Safety / Legal requirement. |
 | **BR-06** | A Task's planned date is determined by its **Created On** date in the current system. | Legacy behavior to be aware of. |
+| **BR-07** | A Follow-up cannot exist without a linked Incident Report. | Follow-ups are remediation actions for reported issues. |
+| **BR-08** | Completing a Follow-up requires Duration to be recorded. | Labor tracking requirement. |
+| **BR-09** | Follow-up images are only captured at completion, not creation. | Images document the remediation work done. |
+| **BR-10** | Follow-up Cost is optional but should be recorded for financial tracking. | Budget management. |
 
 ---
 
@@ -180,7 +203,37 @@ These rules define the constraints that must be enforced by the system.
 
 ---
 
-### UC-03: Record a Nutritional Input (Spraying)
+### UC-03: Complete an Incident Follow-up
+
+**Actor:** Head Greenkeeper
+**Goal:** Record remediation work for a reported incident.
+**Preconditions:** An Incident Report exists with a scheduled Follow-up in "To Do" status.
+
+**Main Flow:**
+1.  User views the Day Plan (Schedule V2).
+2.  User identifies the Follow-up task (displayed with incident warning icon).
+3.  User clicks the status dropdown and selects **Completed**.
+4.  **System Action:** Opens the Follow-up Completion modal.
+5.  User enters **Date of Action** (defaults to today).
+6.  User selects or confirms the **Assigned Staff**.
+7.  User optionally uploads **Images** as evidence of work done.
+8.  User enters **Cost** (optional).
+9.  User enters **Duration** (hours and minutes) — **required**.
+10. User enters **Notes** describing the work performed.
+11. User clicks **Complete**.
+12. **System Action:** Updates Follow-up status to "Completed".
+13. **System Action:** Updates parent Incident Report's `follow_up_status` to 3 (Completed).
+14. **System Action:** Saves images to the follow-up record.
+
+**Exception Flow (Cancel):**
+*   If the user clicks Cancel, the modal closes and no changes are made.
+
+**Exception Flow (Missing Duration):**
+*   If the user does not enter Duration, the system displays an error and prevents submission.
+
+---
+
+### UC-04: Record a Nutritional Input (Spraying)
 
 **Actor:** Head Greenkeeper
 **Goal:** Record a spraying application with full compliance data.
@@ -225,13 +278,24 @@ This section provides a high-level view of the domain entities. For technical im
 │  ACTION   │    │   STAFF   │    │  MACHINE  │    │  PRODUCT  │
 │ (What)    │    │ (Who)     │    │ (With)    │    │(Consumable)│
 └───────────┘    └───────────┘    └───────────┘    └───────────┘
+
+                            ┌───────────────┐
+                            │   FOLLOW-UP   │
+                            │    (Task)     │
+                            └───────┬───────┘
+                                    │ 1
+                                    ▼ 1
+                            ┌───────────────┐       ┌───────────────┐
+                            │    REPORT     │       │  FOLLOW-UP    │
+                            │  (Incident)   │       │    IMAGES     │
+                            └───────────────┘       └───────────────┘
 ```
 
 ---
 
 ## 8. Appendix: Calendar View Requirements
 
-The Schedule Calendar displays a merged view of **Tasks** and **Spraying** records.
+The Schedule Calendar displays a merged view of **Tasks**, **Spraying** records, and **Follow-ups**.
 
 | Requirement | Description |
 | :--- | :--- |
@@ -239,3 +303,6 @@ The Schedule Calendar displays a merged view of **Tasks** and **Spraying** recor
 | **CV-02** | Each item shall show the Action name and assigned Staff count. |
 | **CV-03** | Items shall be visually distinguished by status (Planned, Running, Completed). |
 | **CV-04** | Users shall be able to filter by Site, Action, or Staff. |
+| **CV-05** | Follow-up items shall display the linked Incident name and a warning icon. |
+| **CV-06** | Follow-up items shall show the Site, Subsites, and Areas from the linked Incident Report. |
+| **CV-07** | Follow-up items shall have a distinct visual style to differentiate from regular tasks. |

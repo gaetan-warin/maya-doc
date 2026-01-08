@@ -50,7 +50,8 @@ This document provides a **step-by-step execution plan** to migrate the Maya Sch
 | :--- | :--- |
 | Which UI entry points create Tasks? | `scheduleSaveTasks.js` → `POST /createSchedule` |
 | Which UI entry points create Spraying? | Spraying page → `POST /createSprayingRecords` |
-| Which backend endpoints write data? | `ScheduleController`, `SprayingController` |
+| Which UI entry points create Follow-ups? | Reports page → `POST /report-and-follow-up/{idTenant}` |
+| Which backend endpoints write data? | `ScheduleController`, `SprayingController`, `ReportController` |
 
 ### 2.2 Document the Merge Key Algorithm
 
@@ -101,6 +102,8 @@ php artisan make:migration create_task_assignments_table
 php artisan make:migration create_task_resources_table
 php artisan make:migration create_task_products_table
 php artisan make:migration create_task_ext_nutritional_table
+php artisan make:migration create_task_ext_followup_table
+php artisan make:migration create_task_images_table
 ```
 
 ### 3.2 Migration Content (Key Points)
@@ -187,6 +190,10 @@ public function createSchedule(ScheduleCreateRequest $request) {
 | `DELETE /schedule/{mergeKey}` | `deleteSchedule` | ☐ |
 | `POST /createSprayingRecords` | `createSprayingRecords` | ☐ |
 | `DELETE /deleteSprayingRecords` | `deleteSprayingRecords` | ☐ |
+| `POST /report-and-follow-up/{idTenant}` | `createReportAndFollowUp` | ☐ |
+| `PUT /update-report-and-follow-up/{idReport}` | `updateReportAndFollowUp` | ☐ |
+| `PUT /update-Followup-schedule-status/{followupId}` | `updateFollowupStatusBySchedule` | ☐ |
+| `POST /change-followup-status/{idReport}` | `updateFollowupStatus` | ☐ |
 
 ### 4.4 Acceptance Criteria
 
@@ -281,7 +288,88 @@ private function processCluster(string $mergeKey) {
 // 3. Map locations, tags, products
 ```
 
-### 5.5 Acceptance Criteria
+### 5.5 Migrate Follow-ups
+
+```php
+// app/Console/Commands/BackfillUnifiedTasks.php (continued)
+
+private function migrateFollowups() {
+    $followups = DB::table('report_follow_up')
+        ->join('report', 'report_follow_up.idreport', '=', 'report.idreport')
+        ->leftJoin('incident', 'report.idincident', '=', 'incident.idincident')
+        ->select(
+            'report_follow_up.*',
+            'report.idgroup',
+            'report.idsite',
+            'incident.name as incident_name'
+        )
+        ->cursor();
+
+    foreach ($followups as $followup) {
+        // 1. Check if already migrated (idempotent)
+        if ($this->followupAlreadyMigrated($followup->idreport_follow_up)) {
+            continue;
+        }
+
+        // 2. Create unified task
+        $taskId = $this->createFollowupTask($followup);
+
+        // 3. Create extension record
+        $this->createFollowupExtension($taskId, $followup);
+
+        // 4. Create staff assignment (if assigned)
+        if ($followup->iduser) {
+            $this->createFollowupAssignment($taskId, $followup->iduser);
+        }
+
+        // 5. Create location (from parent report)
+        if ($followup->idsite) {
+            $this->createFollowupLocation($taskId, $followup->idsite);
+        }
+
+        // 6. Migrate images
+        $this->migrateFollowupImages($taskId, $followup->idreport_follow_up);
+    }
+}
+
+private function createFollowupTask($followup): string {
+    $taskId = Str::orderedUuid()->toString();
+
+    DB::table('tasks')->insert([
+        'id' => Str::uuid()->getBytes(),
+        'idgroup' => $followup->idgroup,
+        'type_id' => 'FOLLOWUP',
+        'title' => 'Follow-up: ' . ($followup->incident_name ?? 'Incident Report'),
+        'planned_start' => $followup->date,
+        'planned_minutes' => $followup->total_duration
+            ? (int) (strtotime($followup->total_duration) - strtotime('00:00:00')) / 60
+            : null,
+        'status' => $followup->status === 'completed' ? 'COMPLETED' : 'PLANNED',
+        'notes' => $followup->comment,
+        'version' => 1,
+        'created_at' => $followup->created_at,
+        'updated_at' => $followup->updated_at,
+    ]);
+
+    return $taskId;
+}
+```
+
+### 5.6 Follow-up Mapping Reference
+
+| Legacy Field | Target Field |
+| :--- | :--- |
+| `report_follow_up.idreport_follow_up` | `task_ext_followup.legacy_followup_id` |
+| `report_follow_up.idreport` | `task_ext_followup.report_id` |
+| `report_follow_up.iduser` | `task_assignments.user_id` |
+| `report_follow_up.date` | `tasks.planned_start` |
+| `report_follow_up.comment` | `tasks.notes` |
+| `report_follow_up.total_duration` | `tasks.planned_minutes` (converted) |
+| `report_follow_up.total_cost` | `task_ext_followup.total_cost` |
+| `report_follow_up.status` | `task_ext_followup.followup_status` |
+| `report_follow_up_image.image_url` | `task_images.image_url` |
+
+### 5.7 Acceptance Criteria
 
 - [ ] Command is idempotent (safe to re-run).
 - [ ] Metrics output: total processed, total created, total skipped.
@@ -301,19 +389,34 @@ Run these on staging before switching reads:
 
 ```sql
 -- Count comparison: Legacy vs Unified
-SELECT 
+SELECT
     (SELECT COUNT(DISTINCT merge_key) FROM task) AS legacy_clusters,
-    (SELECT COUNT(*) FROM tasks) AS unified_tasks;
+    (SELECT COUNT(*) FROM tasks WHERE type_id = 'GENERAL') AS unified_general_tasks;
 
 -- Staff assignment comparison
-SELECT 
+SELECT
     (SELECT COUNT(*) FROM task WHERE idstaff IS NOT NULL) AS legacy_staff_rows,
     (SELECT COUNT(*) FROM task_assignments) AS unified_assignments;
 
 -- Product link comparison
-SELECT 
+SELECT
     (SELECT COUNT(*) FROM product_task) AS legacy_product_links,
     (SELECT COUNT(*) FROM task_products) AS unified_product_links;
+
+-- Spraying comparison
+SELECT
+    (SELECT COUNT(*) FROM spraying) AS legacy_spraying,
+    (SELECT COUNT(*) FROM tasks WHERE type_id = 'SPRAYING') AS unified_spraying;
+
+-- Follow-up comparison
+SELECT
+    (SELECT COUNT(*) FROM report_follow_up) AS legacy_followups,
+    (SELECT COUNT(*) FROM tasks WHERE type_id = 'FOLLOWUP') AS unified_followups;
+
+-- Follow-up images comparison
+SELECT
+    (SELECT COUNT(*) FROM report_follow_up_image) AS legacy_followup_images,
+    (SELECT COUNT(*) FROM task_images WHERE image_type = 'evidence') AS unified_followup_images;
 ```
 
 ### 6.2 Implement V3 Read Endpoint
@@ -389,12 +492,16 @@ CREATE TABLE archive_task AS SELECT * FROM task;
 CREATE TABLE archive_spraying AS SELECT * FROM spraying;
 CREATE TABLE archive_taggable AS SELECT * FROM taggable;
 CREATE TABLE archive_product_task AS SELECT * FROM product_task;
+CREATE TABLE archive_report_follow_up AS SELECT * FROM report_follow_up;
+CREATE TABLE archive_report_follow_up_image AS SELECT * FROM report_follow_up_image;
 
 -- After validation period (30 days), drop legacy tables
 DROP TABLE task;
 DROP TABLE spraying;
 DROP TABLE taggable;
 DROP TABLE product_task;
+DROP TABLE report_follow_up_image;
+DROP TABLE report_follow_up;
 ```
 
 ### 7.3 Remove Legacy Compatibility Fields
@@ -442,7 +549,10 @@ If critical issues are discovered:
 | **2** | Implement TaskService | Backend | ☐ |
 | **2** | Add dual-write to Schedule endpoints | Backend | ☐ |
 | **2** | Add dual-write to Spraying endpoints | Backend | ☐ |
+| **2** | Add dual-write to Follow-up endpoints | Backend | ☐ |
+| **2** | Implement FollowupExtensionHandler | Backend | ☐ |
 | **3** | Implement backfill command | Backend | ☐ |
+| **3** | Backfill follow-up records | Backend | ☐ |
 | **3** | Run backfill on staging | DevOps | ☐ |
 | **3** | Validate data parity | QA | ☐ |
 | **4** | Implement V3 read endpoint | Backend | ☐ |

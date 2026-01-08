@@ -1,11 +1,11 @@
 # API Contract Specification
-## Maya — Task & Scheduling API Reference (V3)
+## Maya — Task & Scheduling API Reference (V4)
 
 | Document Details | |
 | :--- | :--- |
 | **Project** | Maya Core 2.0 |
 | **Module** | Scheduling & Task Management |
-| **Version** | 3.0 |
+| **Version** | 4.0 |
 | **Status** | Authoritative Reference |
 | **Target Audience** | Frontend Developers, Backend Developers, QA |
 
@@ -13,7 +13,7 @@
 
 ## 1. Overview
 
-This document specifies the API contracts for the Maya Scheduling module V3 architecture. This version eliminates the legacy `merge_key` pattern in favor of proper relational IDs and many-to-many junction tables.
+This document specifies the API contracts for the Maya Scheduling module V4 architecture. This version eliminates the legacy `merge_key` pattern in favor of proper relational IDs and many-to-many junction tables.
 
 ### Design Principles
 
@@ -30,9 +30,9 @@ This document specifies the API contracts for the Maya Scheduling module V3 arch
 
 | Environment | URL |
 | :--- | :--- |
-| Development | `http://localhost:8000/api/v3` |
-| Staging | `https://api-staging.maya.io/api/v3` |
-| Production | `https://api.maya.io/api/v3` |
+| Local | `http://localhost:8000/api/v4` |
+| Development | `https://core-20-eu-dev.devops.mayaglobal-dev.io/api/v4` |
+| Production | `https://api2.mayaglobal.io/api/v4` |
 
 ### Authentication
 
@@ -59,7 +59,7 @@ Fetches tasks with optional filtering. All relations are always included.
 | `idgroup` | UUID | Yes | The Group (Operational Unit) ID |
 | `start_date` | YYYY-MM-DD | No | Filter by planned_start >= |
 | `end_date` | YYYY-MM-DD | No | Filter by planned_start <= |
-| `type_id` | string | No | Filter by task type (`GENERAL`, `SPRAYING`, `LEAVE`) |
+| `type_id` | string | No | Filter by task type (`GENERAL`, `SPRAYING`, `LEAVE`, `FOLLOWUP`) |
 | `status` | string | No | Filter by status |
 | `action_id` | UUID | No | Filter by action |
 | `site_id` | UUID | No | Filter by site (via locations) |
@@ -266,8 +266,8 @@ Creates a new task with all relations in a single atomic request.
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `idgroup` | UUID | The Group (Operational Unit) ID |
-| `type_id` | string | Task type: `GENERAL`, `SPRAYING`, or `LEAVE` |
-| `action_id` | UUID | The Action ID |
+| `type_id` | string | Task type: `GENERAL`, `SPRAYING`, `LEAVE`, or `FOLLOWUP` |
+| `action_id` | UUID | The Action ID (not required for FOLLOWUP) |
 | `title` | string | Display name |
 | `planned_start` | datetime | Planned start time (ISO 8601) |
 | `assignments` | array | At least one staff assignment required |
@@ -283,7 +283,8 @@ Creates a new task with all relations in a single atomic request.
 | `tags` | UUID[] | Array of tag IDs |
 | `resources` | array | Machine/equipment assignments |
 | `products` | array | Product allocations |
-| *(spraying fields)* | various | See Section 4.2 for SPRAYING-specific fields |
+| *(spraying fields)* | various | See Section 4 for SPRAYING-specific fields |
+| *(followup fields)* | various | See Section 5 for FOLLOWUP-specific fields |
 
 **Response (Success - 201):**
 ```json
@@ -646,11 +647,170 @@ These fields are only present when `type_id: "SPRAYING"`:
 
 ---
 
-## 5. Calendar View Endpoint
+## 5. Follow-up Tasks (Type-Specific Fields)
+
+For tasks with `type_id: "FOLLOWUP"`, additional fields are included. These tasks are linked to Incident Reports and support image uploads on completion.
+
+### 5.1 Create Follow-up Task
+
+**Request Body:**
+```json
+{
+  "idgroup": "550e8400-e29b-41d4-a716-446655440000",
+  "type_id": "FOLLOWUP",
+  "title": "Follow-up: Water damage on Hole 3",
+  "planned_start": "2025-12-15T00:00:00Z",
+  "planned_minutes": 120,
+  "notes": "Check drainage system and repair damage",
+  "locations": [
+    { "id": "550e8400-e29b-41d4-a716-446655440002" }
+  ],
+  "assignments": [
+    { "id": "550e8400-e29b-41d4-a716-446655440020", "role": "WORKER" }
+  ],
+  "report_id": "550e8400-e29b-41d4-a716-446655440080",
+  "total_cost": null,
+  "followup_status": "todo"
+}
+```
+
+**Note:** Follow-up tasks do NOT require an `action_id` since the work type is implied by the linked incident report.
+
+### 5.2 Follow-up Specific Fields
+
+These fields are only present when `type_id: "FOLLOWUP"`:
+
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `report_id` | UUID | Yes | Reference to the parent Incident Report |
+| `report_title` | string | - | Incident report title (response only) |
+| `incident_name` | string | - | Name of the incident type (response only) |
+| `total_cost` | integer | No | Cost in smallest currency unit (cents) |
+| `followup_status` | string | No | `todo` or `completed` (default: `todo`) |
+| `images` | array | - | Evidence images (response only, uploaded via completion endpoint) |
+
+### 5.3 Follow-up Task Response
+
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440101",
+    "idgroup": "550e8400-e29b-41d4-a716-446655440000",
+    "type_id": "FOLLOWUP",
+    "action_id": null,
+    "action_name": null,
+    "title": "Follow-up: Water damage on Hole 3",
+    "planned_start": "2025-12-15T00:00:00Z",
+    "planned_end": null,
+    "planned_minutes": 120,
+    "actual_start": null,
+    "actual_end": null,
+    "status": "PLANNED",
+    "version": 1,
+    "notes": "Check drainage system and repair damage",
+    "assignments": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440020",
+        "name": "John Doe",
+        "role": "WORKER",
+        "is_overtime": false
+      }
+    ],
+    "resources": [],
+    "locations": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440002",
+        "name": "North Course",
+        "hole_id": "550e8400-e29b-41d4-a716-446655440005",
+        "hole_name": "Hole 3"
+      }
+    ],
+    "tags": [],
+    "products": [],
+    "report_id": "550e8400-e29b-41d4-a716-446655440080",
+    "report_title": "Water damage reported after heavy rain",
+    "incident_name": "Water Damage",
+    "total_cost": null,
+    "followup_status": "todo",
+    "images": [],
+    "created_at": "2025-12-10T10:00:00Z",
+    "updated_at": "2025-12-10T10:00:00Z"
+  }
+}
+```
+
+### 5.4 Complete Follow-up Task
+
+Special endpoint for completing a follow-up with evidence images.
+
+**Endpoint:** `PATCH /tasks/{id}/complete-followup`
+
+**Request Body (multipart/form-data):**
+```
+version: 1
+followup_status: "completed"
+total_cost: 15000
+actual_minutes: 90
+notes: "Repaired drainage pipe and reseeded affected area"
+assigned_user_id: "550e8400-e29b-41d4-a716-446655440020"
+images[]: (file upload)
+images[]: (file upload)
+```
+
+**Response (Success - 200):**
+```json
+{
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440101",
+    "type_id": "FOLLOWUP",
+    "status": "COMPLETED",
+    "version": 2,
+    "followup_status": "completed",
+    "total_cost": 15000,
+    "planned_minutes": 120,
+    "actual_end": "2025-12-15T10:30:00Z",
+    "notes": "Repaired drainage pipe and reseeded affected area",
+    "images": [
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440090",
+        "image_url": "https://storage.maya.io/followups/abc123.jpg",
+        "created_at": "2025-12-15T10:30:00Z"
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440091",
+        "image_url": "https://storage.maya.io/followups/def456.jpg",
+        "created_at": "2025-12-15T10:30:00Z"
+      }
+    ]
+  }
+}
+```
+
+**Side Effects:**
+- Sets `tasks.status` to `COMPLETED`
+- Sets `tasks.actual_end` to current timestamp
+- Sets `task_ext_followup.followup_status` to `completed`
+- Updates `report.follow_up_status` to `3` (Completed)
+- Uploads and stores images in `task_images` (with `image_type: 'evidence'`)
+
+### 5.5 Follow-up Status Values
+
+| Status Field | Value | Description |
+| :--- | :--- | :--- |
+| `tasks.status` | `PLANNED` | Follow-up is scheduled |
+| `tasks.status` | `COMPLETED` | Follow-up work is done |
+| `followup_status` | `todo` | Awaiting completion |
+| `followup_status` | `completed` | Work has been completed |
+
+**Note:** Both status fields are synchronized. When `followup_status` changes to `completed`, `tasks.status` is also set to `COMPLETED`.
+
+---
+
+## 6. Calendar View Endpoint
 
 Optimized endpoint for calendar display with summarized data.
 
-### 5.1 Get Calendar Data
+### 6.1 Get Calendar Data
 
 **Endpoint:** `GET /calendar`
 
@@ -702,6 +862,25 @@ Optimized endpoint for calendar display with summarized data.
         "products": [
           { "id": "550e8400-e29b-41d4-a716-446655440075", "name": "Fungicide Pro", "quantity": 25.0, "unit": "L" }
         ]
+      },
+      {
+        "id": "550e8400-e29b-41d4-a716-446655440101",
+        "type_id": "FOLLOWUP",
+        "action_id": null,
+        "action_name": null,
+        "title": "Follow-up: Water damage on Hole 3",
+        "planned_start": "2025-12-15T00:00:00Z",
+        "planned_end": null,
+        "status": "PLANNED",
+        "followup_status": "todo",
+        "report_id": "550e8400-e29b-41d4-a716-446655440080",
+        "incident_name": "Water Damage",
+        "assignments": [
+          { "id": "550e8400-e29b-41d4-a716-446655440020", "name": "John Doe", "role": "WORKER" }
+        ],
+        "locations": [
+          { "id": "550e8400-e29b-41d4-a716-446655440002", "name": "North Course" }
+        ]
       }
     ],
     "2025-12-16": []
@@ -711,9 +890,9 @@ Optimized endpoint for calendar display with summarized data.
 
 ---
 
-## 6. Bulk Operations
+## 7. Bulk Operations
 
-### 6.1 Bulk Create Tasks
+### 7.1 Bulk Create Tasks
 
 Creates multiple tasks in a single request.
 
@@ -766,7 +945,7 @@ Creates multiple tasks in a single request.
 }
 ```
 
-### 6.2 Bulk Update Tasks
+### 7.2 Bulk Update Tasks
 
 Updates multiple tasks in a single request.
 
@@ -796,7 +975,7 @@ Updates multiple tasks in a single request.
 }
 ```
 
-### 6.3 Bulk Delete Tasks
+### 7.3 Bulk Delete Tasks
 
 Deletes multiple tasks in a single request.
 
@@ -823,11 +1002,11 @@ Deletes multiple tasks in a single request.
 
 ---
 
-## 7. Standard Response Structure
+## 8. Standard Response Structure
 
 All endpoints follow a consistent response structure.
 
-### 7.1 Relation Object Pattern
+### 8.1 Relation Object Pattern
 
 All many-to-many relations follow the same flat pattern:
 
@@ -839,7 +1018,7 @@ All many-to-many relations follow the same flat pattern:
 }
 ```
 
-### 7.2 Relation Schemas
+### 8.2 Relation Schemas
 
 **Assignment:**
 ```json
@@ -890,7 +1069,17 @@ All many-to-many relations follow the same flat pattern:
 }
 ```
 
-### 7.3 Empty Relations
+**Image (Follow-up):**
+```json
+{
+  "id": "UUID",              // Image ID
+  "image_url": "string",     // URL to the image
+  "image_type": "string",    // Type: 'evidence', 'before', 'after'
+  "created_at": "datetime"   // Upload timestamp
+}
+```
+
+### 8.3 Empty Relations
 
 Relations that have no data are returned as empty arrays, never `null`:
 
@@ -900,13 +1089,14 @@ Relations that have no data are returned as empty arrays, never `null`:
   "resources": [],
   "locations": [],
   "tags": [],
-  "products": []
+  "products": [],
+  "images": []
 }
 ```
 
 ---
 
-## 8. Error Codes Reference
+## 9. Error Codes Reference
 
 | HTTP Code | Error | Description |
 | :--- | :--- | :--- |
@@ -923,7 +1113,7 @@ Relations that have no data are returned as empty arrays, never `null`:
 
 ---
 
-## 9. Data Types Reference
+## 10. Data Types Reference
 
 | Type | Format | Example |
 | :--- | :--- | :--- |
@@ -931,17 +1121,18 @@ Relations that have no data are returned as empty arrays, never `null`:
 | Datetime | ISO 8601 | `2025-12-15T08:00:00Z` |
 | Date | `YYYY-MM-DD` | `2025-12-15` |
 | Status | Enum | `DRAFT`, `PLANNED`, `RUNNING`, `COMPLETED`, `CANCELLED` |
-| Type ID | String | `GENERAL`, `SPRAYING`, `LEAVE` |
+| Type ID | String | `GENERAL`, `SPRAYING`, `LEAVE`, `FOLLOWUP` |
 | Role | String | `LEAD`, `WORKER`, `OPERATOR`, `SUPPORT` |
 | Resource Type | String | `MACHINE`, `IMPLEMENT`, `VEHICLE`, `SPRAYER` |
+| Image Type | String | `evidence`, `before`, `after` |
 
 ---
 
-## 10. Migration Notes
+## 11. Migration Notes
 
-This V3 API replaces the legacy V2 API which used `merge_key` for task grouping. Key differences:
+This V4 API replaces the legacy V2 API which used `merge_key` for task grouping. Key differences:
 
-| Aspect | Legacy (V2) | Current (V3) |
+| Aspect | Legacy (V2) | Current (V4) |
 | :--- | :--- | :--- |
 | Task Identity | `merge_key` (frontend-generated string) | `tasks.id` (backend-generated UUID) |
 | Staff Assignment | Child rows in `task` table | `task_assignments` junction table |
@@ -949,6 +1140,8 @@ This V3 API replaces the legacy V2 API which used `merge_key` for task grouping.
 | Product Linking | `product_task` keyed by `merge_key` hash | `task_products` keyed by `task_id` |
 | Concurrent Edits | No protection | Optimistic locking via `version` |
 | Task Types | Separate `spraying` table | Unified `tasks` table with `type_id` discriminator |
+| Follow-ups | Separate `report_follow_up` table | Unified `tasks` table with `type_id: FOLLOWUP` |
+| Follow-up Images | `report_follow_up_image` table | `task_images` table (generic) |
 | Response Data | Optional `include` parameter | All relations always included |
 | Relation Format | Nested objects with redundant IDs | Flat `{ id, name, ...fields }` |
 

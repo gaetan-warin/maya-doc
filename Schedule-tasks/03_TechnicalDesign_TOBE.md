@@ -19,7 +19,7 @@ This document defines the **target architecture** ("Model 3") for the Maya Sched
 
 | Goal | Description |
 | :--- | :--- |
-| **Unification** | A single `tasks` table for all scheduled work (including Spraying). |
+| **Unification** | A single `tasks` table for all scheduled work (including Spraying and Follow-ups). |
 | **Normalization** | Proper junction tables for Staff, Machines, Locations, and Products. |
 | **Elimination of `merge_key`** | Replace string-based grouping with proper relational IDs. |
 | **Extensibility** | Support for new task types via extension tables (`task_ext_*`). |
@@ -167,6 +167,44 @@ CREATE TABLE task_ext_nutritional (
 );
 ```
 
+### 3.8 Extension: `task_ext_followup` (Incident Follow-ups)
+
+Domain-specific fields for Incident Report Follow-ups.
+
+```sql
+CREATE TABLE task_ext_followup (
+    task_id             BINARY(16) PRIMARY KEY,      -- FK to tasks
+    report_id           BINARY(16) NOT NULL,         -- FK to report table
+    total_cost          INT UNSIGNED,                -- Cost in smallest currency unit (cents)
+    followup_status     ENUM('todo', 'completed') DEFAULT 'todo',
+
+    -- Migration Compatibility (remove after deprecation)
+    legacy_followup_id  INT UNSIGNED,                -- Maps to report_follow_up.idreport_follow_up
+
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    FOREIGN KEY (report_id) REFERENCES report(idreport) ON DELETE CASCADE,
+    INDEX idx_report (report_id),
+    INDEX idx_legacy (legacy_followup_id)
+);
+```
+
+### 3.9 Images: `task_images`
+
+Generic image storage for tasks. Currently used for Follow-up evidence, but extensible for other task types.
+
+```sql
+CREATE TABLE task_images (
+    id          BINARY(16) PRIMARY KEY,
+    task_id     BINARY(16) NOT NULL,             -- FK to tasks
+    image_url   VARCHAR(500) NOT NULL,
+    image_type  VARCHAR(32) DEFAULT 'evidence',  -- 'evidence', 'before', 'after', etc.
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+    INDEX idx_task (task_id)
+);
+```
+
 ---
 
 ## 4. Entity Relationship Diagram (ERD)
@@ -200,6 +238,22 @@ CREATE TABLE task_ext_nutritional (
          │───────────────────────────────│
          │ task_id (PK/FK)               │
          │ nozzle_type_id, speed, rpm... │
+         └───────────────────────────────┘
+
+         ┌───────────────────────────────┐
+         │      task_ext_followup        │
+         │───────────────────────────────│
+         │ task_id (PK/FK)               │
+         │ report_id (FK)                │───────► report
+         │ total_cost, followup_status   │
+         └───────────────────────────────┘
+
+         ┌───────────────────────────────┐
+         │         task_images           │
+         │───────────────────────────────│
+         │ id (PK)                       │
+         │ task_id (FK) ─────────────────│───────► tasks
+         │ image_url, image_type         │
          └───────────────────────────────┘
 ```
 
@@ -302,12 +356,12 @@ The TO-BE API should be RESTful, predictable, and support eager loading.
 │  - Delegates to extension handlers             │
 └───────────────────────┬────────────────────────┘
                         │
-        ┌───────────────┼───────────────┐
-        ▼               ▼               ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│ NutritionalExt│ │ LeaveExtension│ │ (Future...)   │
-│ Handler       │ │ Handler       │ │               │
-└───────────────┘ └───────────────┘ └───────────────┘
+        ┌───────────────┼───────────────┬───────────────┐
+        ▼               ▼               ▼               ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│ NutritionalExt│ │ LeaveExtension│ │ FollowupExt   │ │ (Future...)   │
+│ Handler       │ │ Handler       │ │ Handler       │ │               │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
 ### 6.2 Extension Handler Contract
@@ -356,3 +410,15 @@ These fields should be **removed** after the migration is complete and validated
 ### ADR-004: Extension Tables for Domain-Specific Data
 **Decision:** Use `task_ext_*` tables instead of a polymorphic `parameters` JSON blob for critical fields.
 **Rationale:** Enables proper validation, indexing, and schema enforcement for compliance-critical data (e.g., Spraying).
+
+### ADR-005: Follow-up Tasks as Unified Task Type
+**Decision:** Integrate Incident Report Follow-ups into the unified `tasks` table with `type_id = 'FOLLOWUP'` and a dedicated extension table.
+**Rationale:** Enables Follow-ups to appear in the same calendar view as regular tasks, share common infrastructure (assignments, locations), while maintaining domain-specific fields (report_id, cost, images) in the extension table.
+
+### ADR-006: Generic Task Images Table
+**Decision:** Store task images in a generic `task_images` table linked to `tasks.id` rather than extension-specific tables.
+**Rationale:** Although images are currently only used for Follow-up completion evidence, a generic table allows future extensibility for other task types (e.g., before/after photos for maintenance tasks) without schema changes. The `image_type` field provides categorization.
+
+### ADR-007: Follow-up Status Synchronization
+**Decision:** When a Follow-up task status changes, the parent `report.follow_up_status` is automatically updated via the FollowupExtensionHandler.
+**Rationale:** Maintains data consistency between the unified task system and the existing Reports module without requiring dual updates from the frontend.
