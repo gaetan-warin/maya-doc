@@ -139,7 +139,20 @@ Each report can have multiple follow-up entries:
 
 ### 5.2 Schedule Integration
 
-Follow-up actions can be linked to scheduled tasks, creating a unified view of incident response alongside regular operations.
+Follow-up actions appear automatically in the Schedule view when a staff member is assigned. This provides a unified view of incident response alongside regular operations.
+
+**How it works:**
+1. When a follow-up is created with an assigned staff member, it appears in their Schedule for the specified date
+2. Staff can update follow-up status directly from the Schedule page
+3. Status changes sync back to the Reports module
+
+**Display in Schedule:**
+- Follow-ups are shown with the incident type as the task title
+- They are visually distinguished from regular schedule tasks
+- The assigned greenkeeper sees them alongside their daily tasks
+
+> [!NOTE]
+> Follow-ups use a separate notification system (`task_push_notification` table) rather than creating entries in the main `task` table. This allows for independent status tracking while maintaining Schedule visibility.
 
 ---
 

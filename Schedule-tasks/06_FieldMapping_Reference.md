@@ -236,17 +236,187 @@ Legacy links products to `merge_key`. We must resolve this to the new `task_id`.
 
 ```sql
 INSERT INTO task_products (id, task_id, product_id, quantity)
-SELECT 
-    UUID(), 
-    t.id, 
-    pt.idproduct, 
+SELECT
+    UUID(),
+    t.id,
+    pt.idproduct,
     pt.quantity
 FROM product_task pt
 -- We need to link product_task to the new task.
 -- PROBLEM: product_task uses a HASH of the merge_key, not the merge_key itself.
--- VALIDATION REQUIRED: Does legacy table store the raw merge_key? 
+-- VALIDATION REQUIRED: Does legacy table store the raw merge_key?
 -- IF NOT, the PHP script must re-hash new tasks to find the match.
 -- ASSUMING 'merge_key' exists in product_task or we migrate via PHP logic:
-JOIN tasks t ON t.legacy_merge_key = pt.merge_key; 
+JOIN tasks t ON t.legacy_merge_key = pt.merge_key;
 ```
 *Note: If `product_task` only has a hash, this step **must** be done in PHP/Code, not SQL.*
+
+---
+
+## 8. Follow-up Records (`report_follow_up` → `tasks` + `task_ext_followup`)
+
+Follow-ups are migrated from the separate `report_follow_up` table into the unified task system.
+
+### 8.1 Core Task Mapping
+
+| Legacy `report_follow_up` | Target `tasks` | Explanation |
+| :--- | :--- | :--- |
+| `idreport_follow_up` | `legacy_followup_id` (in ext table) | **Audit:** Store old ID for traceability. |
+| `idreport` | `task_ext_followup.report_id` | **Link:** Reference to parent incident report. |
+| `iduser` | `task_assignments.user_id` | **Move:** To assignments table. |
+| `date` | `planned_start` | **Map:** Scheduled follow-up date. |
+| `comment` | `notes` | **Copy:** Follow-up notes. |
+| `total_duration` | `planned_minutes` | **Transform:** Convert TIME to minutes. |
+| `total_cost` | `task_ext_followup.total_cost` | **Move:** To extension table. |
+| `status` | `task_ext_followup.followup_status` | **Copy:** 'todo' or 'completed'. |
+| `status` | `status` | **Transform:** 'todo' → 'PLANNED', 'completed' → 'COMPLETED'. |
+
+### 8.2 SQL Statement (Core Task)
+
+```sql
+-- Step 1: Insert into unified tasks table
+INSERT INTO tasks (
+    id,
+    idgroup,
+    type_id,
+    title,
+    planned_start,
+    planned_minutes,
+    status,
+    notes,
+    version,
+    created_at,
+    updated_at
+)
+SELECT
+    UUID(),                                           -- Generate NEW Task ID
+    r.idgroup,                                        -- From report's group
+    'FOLLOWUP',                                       -- Constant type
+    CONCAT('Follow-up: ', COALESCE(i.name, 'Incident Report')),  -- Title from incident
+    rf.date,                                          -- Scheduled date
+    CASE
+        WHEN rf.total_duration IS NOT NULL
+        THEN TIME_TO_SEC(rf.total_duration) / 60
+        ELSE NULL
+    END,                                              -- Convert TIME to minutes
+    CASE rf.status
+        WHEN 'completed' THEN 'COMPLETED'
+        ELSE 'PLANNED'
+    END,                                              -- Map status
+    rf.comment,                                       -- Notes
+    1,                                                -- Initial version
+    rf.created_at,
+    rf.updated_at
+FROM report_follow_up rf
+JOIN report r ON rf.idreport = r.idreport
+LEFT JOIN incident i ON r.idincident = i.idincident;
+```
+
+### 8.3 SQL Statement (Extension Table)
+
+```sql
+-- Step 2: Insert into extension table
+-- Note: This requires a join to find the newly created task IDs
+-- Best done in PHP where we can track the UUID mapping
+
+INSERT INTO task_ext_followup (
+    task_id,
+    report_id,
+    total_cost,
+    followup_status,
+    legacy_followup_id
+)
+SELECT
+    t.id,                                             -- New Task ID (from mapping)
+    rf.idreport,
+    rf.total_cost,
+    rf.status,
+    rf.idreport_follow_up                             -- Legacy ID for audit
+FROM report_follow_up rf
+JOIN tasks t ON t.type_id = 'FOLLOWUP'
+    AND t.notes = rf.comment
+    AND DATE(t.planned_start) = rf.date
+    AND t.created_at = rf.created_at;                 -- Match by multiple fields
+
+-- RECOMMENDED: Use PHP migration script for accurate UUID mapping
+```
+
+### 8.4 SQL Statement (Staff Assignments)
+
+```sql
+-- Step 3: Migrate staff assignments
+INSERT INTO task_assignments (id, task_id, user_id, role)
+SELECT
+    UUID(),
+    tef.task_id,
+    rf.iduser,
+    'WORKER'                                          -- Default role
+FROM report_follow_up rf
+JOIN task_ext_followup tef ON tef.legacy_followup_id = rf.idreport_follow_up
+WHERE rf.iduser IS NOT NULL;
+```
+
+### 8.5 SQL Statement (Locations)
+
+```sql
+-- Step 4: Migrate locations from parent report
+INSERT INTO task_locations (id, task_id, site_id)
+SELECT
+    UUID(),
+    tef.task_id,
+    r.idsite
+FROM task_ext_followup tef
+JOIN report r ON r.idreport = tef.report_id
+WHERE r.idsite IS NOT NULL;
+```
+
+### 8.6 SQL Statement (Images)
+
+```sql
+-- Step 5: Migrate follow-up images
+INSERT INTO task_images (id, task_id, image_url, image_type, created_at)
+SELECT
+    UUID(),
+    tef.task_id,
+    rfi.image_url,
+    'evidence',                                       -- Default type for follow-up images
+    NOW()
+FROM report_follow_up_image rfi
+JOIN task_ext_followup tef ON tef.legacy_followup_id = rfi.idreport_follow_up;
+```
+
+### 8.7 Post-Migration: Update Report Status
+
+```sql
+-- Ensure report.follow_up_status matches the migrated follow-up status
+UPDATE report r
+JOIN task_ext_followup tef ON tef.report_id = r.idreport
+JOIN tasks t ON t.id = tef.task_id
+SET r.follow_up_status = CASE
+    WHEN t.status = 'COMPLETED' THEN 3
+    WHEN t.status = 'PLANNED' THEN 2
+    ELSE r.follow_up_status
+END;
+```
+
+---
+
+## 9. Migration Order Summary
+
+Execute migrations in this order to maintain referential integrity:
+
+| Step | Source | Target | Notes |
+| :--- | :--- | :--- | :--- |
+| 1 | `task` (parents) | `tasks` | GENERAL type, parent rows only |
+| 2 | `task` (sites) | `task_locations` | From parent task.idsite |
+| 3 | `task` (staff children) | `task_assignments` | Child rows with idstaff |
+| 4 | `task` (machine children) | `task_resources` | Child rows with idmachinery |
+| 5 | `taggable` | `task_tags` | Link via legacy_task_id |
+| 6 | `spraying` | `tasks` | SPRAYING type |
+| 7 | `spraying` | `task_ext_nutritional` | Extension fields |
+| 8 | `product_task` | `task_products` | Via merge_key or PHP |
+| 9 | `report_follow_up` | `tasks` | FOLLOWUP type |
+| 10 | `report_follow_up` | `task_ext_followup` | Extension fields |
+| 11 | `report_follow_up` | `task_assignments` | Staff from follow-up |
+| 12 | `report` | `task_locations` | Site from parent report |
+| 13 | `report_follow_up_image` | `task_images` | Evidence images |
