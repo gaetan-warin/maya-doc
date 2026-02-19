@@ -393,3 +393,37 @@ These fields should be **removed** after the migration is complete and validated
 - Due dates use `planned_start` field for calendar visibility
 - Parent report/task linkage maintained via `task_ext_followup` extension table
 - Enables follow-up filtering, reporting, and analytics using existing task infrastructure
+
+### ADR-006: Planner Modules Deferred to Future Phase
+**Decision:** The Planner modules (Action Planner, Daily Routine, Spraying Routine) are **out of scope** for the Model 3 migration and will remain in their current tables.
+**Rationale:**
+- Model 3 focuses on unifying daily operational data (`task`, `spraying`, `report_followup`)
+- Planner modules serve a different purpose: strategic/annual planning vs. daily execution
+- Migrating Planner would significantly increase migration scope and risk
+- Current tables (`action_plan`, `daily_routine`, `spraying_routine`) are stable and functional
+
+**Future Consideration:**
+When the Model 3 migration is complete and stable, evaluate unifying Planner modules:
+
+| Module | Potential `type_id` | Extension Table |
+| :--- | :--- | :--- |
+| Action Planner | `ACTION_PLAN` | `task_ext_action_plan` (annual_plan JSON, zone_id) |
+| Daily Routine | `ROUTINE_DAILY` | `task_ext_routine` (recurrence_rule, template_id) |
+| Spraying Routine | `ROUTINE_SPRAYING` | `task_ext_routine` + `task_ext_nutritional` |
+
+> **See Also:** `docu/features/planner/functional_documentation.md` for current Planner architecture.
+
+---
+
+## 9. Future Roadmap (Post-Migration)
+
+The following enhancements are candidates for future phases after Model 3 is stable:
+
+| Priority | Enhancement | Description |
+| :--- | :--- | :--- |
+| **P1** | Action Planner Integration | Unified annual plan view reading from `tasks` table |
+| **P2** | Routine → Task Generation | Daily/Spraying Routines generate `tasks` rows directly |
+| **P3** | Recurrence Support | Native `task_recurrences` table for repeating tasks |
+| **P4** | Template System | `task_templates` for reusable task configurations |
+
+These are documented here for architectural awareness but are **not part of the current migration scope**.

@@ -80,6 +80,21 @@ Focus on:
 
 ---
 
+## Related Modules
+
+This documentation focuses on **Daily Scheduling** (the Day Plan). The following related modules have their own documentation and may integrate with the unified task model in future phases:
+
+| Module | Documentation | Relationship to Schedule |
+| :--- | :--- | :--- |
+| **Action Planner** | `docu/features/planner/functional_documentation.md` | Annual/strategic task planning. Future candidate for unified `tasks` table with `type_id = 'ACTION_PLAN'`. |
+| **Daily Routine** | `docu/features/planner/functional_documentation.md` | Recurring task templates that feed into Schedule. |
+| **Spraying Routine** | `docu/features/planner/functional_documentation.md` | Recurring spraying templates. Currently separate from daily spraying records. |
+| **Fertilisation Planner** | `docu/features/planner/functional_documentation.md` | Nutrient scheduling. Integrates with Inventory. |
+
+> **Note:** The Model 3 migration (this suite) currently unifies `task`, `spraying`, and `report_followup`. The Planner modules remain separate but should be evaluated for future unification in a subsequent phase.
+
+---
+
 ## Related Resources
 
 *   **Notion Workspace:** [Schedule Page Revamp](https://www.notion.so/gvegroup/Schedule-Page-Revamp-...) (Internal)
@@ -87,3 +102,6 @@ Focus on:
     *   `core-2.0/app/Http/Controllers/ScheduleController.php`
     *   `core-2.0/app/Repositories/ScheduleRepository.php`
     *   `web/src/composables/formatting/schedule/scheduleSaveTasks.js`
+*   **Planner Module Documentation:**
+    *   `docu/features/planner/functional_documentation.md`
+    *   `docu/features/planner/technical_documentation.md`

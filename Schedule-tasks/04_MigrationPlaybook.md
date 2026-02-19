@@ -561,3 +561,34 @@ If critical issues are discovered:
 | **5** | Disable dual-write | Backend | ☐ |
 | **5** | Archive legacy tables | DBA | ☐ |
 | **5** | Remove legacy compatibility fields | Backend | ☐ |
+
+---
+
+## 10. Out of Scope (This Migration)
+
+The following modules are **explicitly excluded** from the Model 3 migration to limit scope and risk:
+
+| Module | Current Tables | Reason for Exclusion |
+| :--- | :--- | :--- |
+| **Action Planner** | `action_plan` | Annual/strategic planning — different lifecycle than daily tasks |
+| **Daily Routine** | `daily_routine`, `daily_routine_tasks`, `daily_routine_site`, `daily_routine_staff` | Template system for recurring tasks — separate concern |
+| **Spraying Routine** | `spraying_routine_*` | Template system for recurring spraying — separate concern |
+| **Fertilisation Planner** | `fertilization_plan_template`, `fertilization_plan` | Nutrient planning — integrates with Inventory, not Schedule |
+| **Budget Planner** | `budget_plan`, `actual_order_plan` | Financial planning — out of domain |
+
+### Why Not Migrate Planner Modules?
+
+1. **Different Purpose:** Planners are for *strategic/annual planning*, not *daily execution*
+2. **Stable & Functional:** Current Planner tables work correctly — no urgent technical debt
+3. **Scope Creep Risk:** Adding Planner would 2-3x the migration effort
+4. **Dependency Chain:** Routines generate tasks → must ensure Model 3 tasks work first
+
+### Future Phase Consideration
+
+After Model 3 is stable in production, a **Phase 2 migration** could unify Planner modules:
+- Action Planner → `tasks` with `type_id = 'ACTION_PLAN'`
+- Daily Routine → `task_templates` + recurrence rules
+- Spraying Routine → `task_templates` with `type_id = 'ROUTINE_SPRAYING'`
+
+> **See:** `03_TechnicalDesign_TOBE.md` Section 9 (Future Roadmap) and ADR-006 for architectural details.
+> **See:** `docu/features/planner/` for current Planner documentation.
