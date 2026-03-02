@@ -1,0 +1,443 @@
+Valentine Godin at 00:00 - 00:01
+Good morning.
+
+Daniel Kaufmann at 00:01 - 00:02
+Good morning for us.
+
+Valentine Godin at 00:03 - 00:12
+Excellent. Well. Good morning and thank you for then waking up early. I appreciate to be there for you. Thank you for that. How is everyone?
+
+Shaun Bowles at 00:14 - 00:16
+good I'll speak to you later. Good.
+
+Daniel Kaufmann at 00:17 - 00:18
+Yep, good so far.
+
+Valentine Godin at 00:19 - 00:23
+Good Tuesday. All good, it's a good start.
+
+Daniel Kaufmann at 00:24 - 00:27
+We made it through Monday, so. Tuesday's always better.
+
+Valentine Godin at 00:30 - 00:44
+I can only agree with this. I can only agree with that statement. Excellent. Um... all right where what's the best way how is the best way to do this today um i will probably lead you let you take the lead on this because you probably
+
+Daniel Kaufmann at 00:45 - 00:58
+Yeah, absolutely. I know you and I have met, so I want to introduce Sean. He actually supervises the NSN support team, but he's also kind of our... Our back end guru here at MSM, we can't figure something out. He's the guy we. give all our stuff to figure it out.
+
+Valentine Godin at 00:58 - 00:58
+Brilliant.
+
+Daniel Kaufmann at 00:59 - 01:00
+He's definitely more familiar.
+
+Valentine Godin at 01:00 - 01:04
+You had that guy in the comment. That's a very good... good person to have on the team.
+
+Daniel Kaufmann at 01:05 - 01:45
+Yes, absolutely. So, um, What we're going to do is we're going to show you. um Either I or him are going to share. probably him, going to share a computer. We're going to show you. how where it's stored in sql um show you how it kind of Maybe not so much the structure because that's... Our product managers probably wouldn't like that, but we're going to show you where water uses data is stored and then he's going to kind of share. some scripts that we use to pull data out raw data for customers that want more then our reporting tool can Display. And then from there. um We can try to answer any of the questions you might need.
+
+Valentine Godin at 01:46 - 01:48
+Perfect. Sounds like a plan.
+
+Shaun Bowles at 01:49 - 02:00
+I'm curious before I jump on to like a. like one of our demo machines. the customer that you're contracting with to do this work. Can we get on their machine so we can actually look at their information?
+
+Daniel Kaufmann at 02:02 - 02:03
+How is it right now for them?
+
+Shaun Bowles at 02:04 - 02:05
+I don't know who it is we're working with.
+
+Valentine Godin at 02:05 - 02:13
+So it's 2pm. on from their perspective i don't think they would mind but i don't have them on the call today
+
+Shaun Bowles at 02:14 - 02:38
+If you can tell me who it is, what I will typically do if it's something like this, I'll pop in, I'll look to see if anybody's there, and I'll throw a notepad open. And I'll tell them who I am. and kind of get an eye on you know make sure we're not going to mess with anything or be in their way and if we are we'll just do a demo system i just don't know that i'll have one that has water history positioned the way that we want on our test system. What is the customer?
+
+Daniel Kaufmann at 02:39 - 02:39
+It's a dare manner.
+
+Shaun Bowles at 02:41 - 02:41
+One minute.
+
+Daniel Kaufmann at 02:42 - 02:51
+yeah and if they don't answer real quick we could just go ahead and do a demo show um I don't really want to mess with anything on there. machine it would be nicer to do it on there since she's going to be having to do it on theirs anyway though
+
+Shaun Bowles at 02:52 - 02:53
+Right.
+
+Valentine Godin at 02:53 - 02:54
+Let's see.
+
+Shaun Bowles at 02:54 - 02:56
+What did you say the name of it is? It's what manner?
+
+Daniel Kaufmann at 02:56 - 02:58
+Adare, A-D-A-R-E.
+
+Valentine Godin at 02:59 - 03:03
+It's 2pm so it might be lucky time for us but let's see.
+
+Shaun Bowles at 03:05 - 03:19
+What I'll do is... I will share my screen here in a moment. I'm just working on getting a connection to them. Before I... share it and i'll pop on make sure that they're not actively using it.
+
+Valentine Godin at 03:19 - 03:20
+Non, non, il faut lire le slan.
+
+Shaun Bowles at 03:25 - 03:48
+It's in screensaver mode. That's a starter. Hard to be in a screen saver when you're, when you're actually using the system. So I will go ahead and just put a note out on their side screen I'll just tell them. what we're doing. i mean clearly they're aware that they're contracting with you for this for this task right Okay.
+
+Valentine Godin at 03:49 - 04:21
+They were. Sorry, they were in the email. that we were all together so then even where we're meeting now. Um... No, no, so they're fully aware and they've been anyway wanting this. and when I checked first if they were required in the meeting but We thought it wouldn't be really. of any value add to have them because it would be rather technical.
+
+Daniel Kaufmann at 04:22 - 04:26
+So yeah. they'd be pretty much lost the whole time except for granting us access to the machine.
+
+Valentine Godin at 04:29 - 04:31
+And they probably have better things to do at this point. in time
+
+Daniel Kaufmann at 04:43 - 05:02
+So I'm gonna go ahead and do a. screen share here. It's got popped up over here on the side. Thank God we're here. doing that, Sean, is OJ's here this morning, right?
+
+Shaun Bowles at 05:03 - 05:04
+Yes
+
+Daniel Kaufmann at 05:07 - 05:09
+I need them to hop on a third turn with me.
+
+Shaun Bowles at 05:10 - 06:06
+Their update time isn't for about two hours. so We've got plenty of time to play without. links actually doing anything which again is Not super relevant. to what we're doing. But it is kind of. so I'll start with that. um This begin water daytime. You don't have to get in and look at it every day, but. Generally, they'll leave it the same. um That is when we start our irrigation. day But our water reporting. key around at that time. That's a weird concept, but... What they consider is I watered today. is everything after this time. From now until midnight. and then midnight until until that okay technically midnight until this time tomorrow that's that's their Right. So when I say water on. the the 17th. The 17th for them begins at this time. in the afternoon and it's all the way through and through.
+
+Valentine Godin at 06:06 - 06:07
+there
+
+Shaun Bowles at 06:08 - 06:41
+But our water history. as it stores it. it doesn't really care about that day it Switches dates at midnight. So. When my customers are looking at their irrigation day, they're saying it's the 17th. We have to account for the 17th and the 18th. For you, it'll just be the raw data, but you'll just need to know that. the day's worth of irrigation. is probably going to begin. If I'm trying to report on the full day of irrigation It's going to begin. If I was doing it right now. Yesterday, at 4 p.m. And then it's going to carry through to today at 4 p.m.
+
+Valentine Godin at 06:43 - 06:58
+So it is important if we. if it is i mean as you said most customer we'll stick with the purdy fall 4pm but it is worth It doesn't at any point look a bit... is a disruptancy. probably coming from there, for example.
+
+Shaun Bowles at 07:00 - 07:09
+Right. Yeah, they just. Just be aware that that is how. how we look at an irrigation day, but then how it's different when you're looking at the water. construction.
+
+Valentine Godin at 07:09 - 07:10
+So very clear.
+
+Shaun Bowles at 07:11 - 07:23
+I think you'll be able to work through it just fine, just as long as you know how they look at it. Now, as far as getting access. We. We go about it through. sequel SQL Server. See you.
+
+Valentine Godin at 07:23 - 07:24
+Yep.
+
+Shaun Bowles at 07:24 - 07:28
+I'm assuming you are familiar with SQL stuff. You're probably not in this business without knowledge of that. No,
+
+Valentine Godin at 07:29 - 07:33
+no, no, exactly. No, no, I am very, very aware. I'm sick on that, but doesn't.
+
+Daniel Kaufmann at 07:35 - 07:55
+Sean, as you're going through this, I'm going to... I'm going to take this particular moment. We're Since I was approached by the actual super at Adair, this is okay for us to kind of show you, but typically we wouldn't show a third party how this stuff kind of works. Just wanted to. Throw that out there. I didn't tell our product managers we're doing this, but. I know it's important for them and it is their data.
+
+Valentine Godin at 07:56 - 08:19
+No, no, of course, of course. It is it and it's been yeah, no, and I truly I appreciate this because it will help them a lot in the operation. um and And I'd rather, instead of me trying to figure that out, reverse engineering, I'd rather do it transparently with you constructively. than you not knowing what we're doing. mean, you know, at least it's transparent and
+
+Daniel Kaufmann at 08:21 - 08:25
+Yeah, in case something... Just in case it triggers something else, at least we all kind of know what's going on.
+
+Valentine Godin at 08:26 - 08:32
+Hopefully I won't break anything. I should only need to read. the read stuff. I don't really look for anything else really.
+
+Daniel Kaufmann at 08:32 - 08:35
+And we're just looking at water usage, so this won't affect anything.
+
+Shaun Bowles at 08:36 - 09:33
+Yeah, and all we're doing is a select statement anyways. We're not transforming anything in the database. We'll be fine. um All right, so boring for structuring your query. you're going to be going against the database links main. So. Yeah, you can do your. your typical Typical query to target that database. When I'm working in here just to save keystrokes, I like to just go ahead and selectly. Thanks, Ben. um Yeah. Really? All right. So. Kind of show you around on. what different ways we capture it. If we go to... I want to start this. Do you know what? kind of granularity you're going to need for this reporting. Sorry, I'm looking at you on screen, but my camera's over here.
+
+Valentine Godin at 09:34 - 10:10
+No, no, of course, I understand that. I will double check. with them. because we haven't gone threat but i suspect what they expect or what they would want given. They probably have given who they are. And given the standard they play on, they play obviously high end so they wouldn't be the typical customers we know. They probably won the... I don't know how you guys work, but the per hole per zone. Daily minimum. maximum they would ask us is probably hourly.
+
+Shaun Bowles at 10:14 - 10:15
+Okay. um
+
+Valentine Godin at 10:17 - 10:17
+Sorry.
+
+Shaun Bowles at 10:18 - 10:45
+No, you're good. You're good. The Per Holper Zone. is definitely Definitely doable. but it depends on where we report from. This is our lump. storage, the water use data. and it breaks it down. per hole. per zone. per day. Not for Alvin. And then, yeah, if you have. more breakdown but uh Nulls we can ignore.
+
+Valentine Godin at 10:46 - 10:53
+That's already extremely strong and that's at least an easy win. because the data is just now structuring it if I understand it correctly.
+
+Shaun Bowles at 10:54 - 11:27
+and this is why I started off the explanation of our irrigation day for them starting at 3 55 pm. because This is. starting going back to midnight. This isn't me, it's the tiger. variation day. So from this table, It's really impossible to split. the data up. To say this is how much you watered. from your update time to your update time. It's midnight to midnight, which means it's Half of yesterday and half of today. so This table is. Yeah, it's not my favorite.
+
+Daniel Kaufmann at 11:28 - 11:28
+Okay.
+
+Shaun Bowles at 11:28 - 11:42
+But. That's what's in this table. You've got per hole, per zone. midnight to midnight. we're okay with midnight to midnight. You got that? All you got to do is break it out. um Let's see, well, what's the next one we want to hit here?
+
+Valentine Godin at 11:42 - 11:47
+Do you have a, I suppose, is there a table that is... what they will call a day.
+
+Shaun Bowles at 11:49 - 11:53
+Water use upload is actually closer to that.
+
+Valentine Godin at 11:54 - 11:54
+okay
+
+Shaun Bowles at 11:55 - 12:37
+So What are you uploading? the type of satellite that they have. It stores. the runtimes that it has accomplished for the day. This one's a little bit of a risk. because The data in this table is. created by us. going out to the satellite and asking it to tell me how much it ran. And it tells me how much it ran. automatic which is their scheduled daily irrigation And then it gives me. the total duration. wish If there's a variance, that means it's how much they ran with their schedule. and then manually watering. what they do. Everybody does. as manual water. you may see a variance in that. I don't know. even scroll through the head. It does not appear they are using... the function to upload
+
+Valentine Godin at 12:38 - 12:50
+It might be because it's winter as well. Um But you have total duration being so the difference between auto which is the auto schedule and total if they do an additional manual.
+
+Shaun Bowles at 12:52 - 13:00
+Total is... is everything included so you would actually subtract auto duration from total duration and the leftovers are manual
+
+Valentine Godin at 13:01 - 13:02
+Okay, yeah.
+
+Shaun Bowles at 13:03 - 13:11
+um getting up low. So yeah, you're right. Since it's winter. Maybe that's all it is. They just haven't watered anything.
+
+Valentine Godin at 13:11 - 13:16
+It's been pretty rainy around here, so I wouldn't be surprised if they just having, you know. haven't been needing to.
+
+Shaun Bowles at 13:19 - 13:42
+The risk. in using this table. for you. and accuracy is. if they don't have communication to their satellites for any reason. For us, it's like an everyday thing because that's why our customers always call us, right? Something's broken, it doesn't talk. I imagine a lot of customers are working most of the time. It's just our customers that are calling are never working when they call. if they're not talking they won't have data in here for you to report against.
+
+Valentine Godin at 13:44 - 13:55
+But will it sink? So if, for example, the satellite is down for a couple of hours for reason X. if suddenly it comes back up The repo mechanism will do the job of updating that, right?
+
+Shaun Bowles at 13:56 - 14:18
+It will. As soon as it talks, it'll get it. It talks... every other hour. uh on the even hours And it updates this table. Bye. And there's some more rules in there in between that, but. As long as it's able to do that. As long as it gets it once, it'll get everything. As long as he gets it once before the end of his irrigation day, before 3.55. it'll get it off of the deck. And it's pretty cold. that we talk about.
+
+Valentine Godin at 14:19 - 14:26
+And you need Choo you need to join that to something to know what's the cause the hole in the area.
+
+Shaun Bowles at 14:28 - 15:33
+So. This is a. whole lot more granular. This is actually at the station level. So you can get down to what's. specifically. How long it watered. The most I've ever joined this up against. is the station table to give me the uh the location tag. We use like the... It's a numeric display. I'll show you what it looks like right quick. Sorry, it's an alphanumeric display. Yeah, he's got everything turned off. So. one Green, let's do one green, too. Yes, I double tap. One green, two. so The one is indicating that it's hole one. GR is for the area green. The number two is it is the second. Hey, the second station on that here area. That's all. That's what I can join it against easily. I haven't attempted to join that against an area, but I would be willing to. Bet that it can be done, but it might require a couple of different joins. You might have to hit a station assignment table to get that.
+
+Daniel Kaufmann at 15:34 - 15:37
+You would have to hit two at least. to make that work.
+
+Shaun Bowles at 15:38 - 17:45
+um But the join would be on the SUID. against the station table. so I pulled that. the SU ID over here. Sorry, the S-U-I-D from the... upload table I have. I mean, why am I looking that up? I've got all this stuff already written. I'll have to reinvent the wheel here. maybe I need. There we go. our system unique ID right here. If you join against that. and then pull your station descriptor if you wanted the station descriptor. You could give them station by station watering for their irrigation day. I As long as it's communicating, I think that's your strongest tool. because that is the That is the dead to rights. I am telling you I watered this. much It is from the satellite base plate. and it only gets generated after the station. The only thing that could make a variance at this point is the amount of is it physically could not get water out of a station. But it ran the station timer at the faceplate. It's as close to guaranteeing the water happened as you are ever going to get. So Water use upload, it only lives in that table for seven days, I believe. on that table. Once it... hits the seven-day mark. It moves over to that water. The water data table I showed you. and it becomes that general lump data. that you really can't. break apart. So. I don't like that table. I like this one. um There is another one you can go against. I'll show you. I've just. did a project for one for this other one.
+
+Daniel Kaufmann at 17:46 - 17:51
+And Sean, if you needed the area for that one, you could probably reference the area tag, just the GR, the two digit.
+
+Shaun Bowles at 17:53 - 18:02
+You really could if you wanted to just break it apart. uh if you can parse the data from this tag That might be your... your easiest way. without trying to do this.
+
+Valentine Godin at 18:02 - 18:09
+Because you've got an area table that then keeps. each area of the hole in the Zone.
+
+Shaun Bowles at 18:10 - 18:36
+Yeah, and it can parse it from this right here. Our customers do have the ability to go in and edit. how they display a station tag. So they may decide they want this to look a little different down the road. They may change GR to... She is. Whatever. um Hey, Tig. If they change it, as long as you're referencing this to make your... groupings. then they can make it whatever they want and you just read it. and lump it together as a you know, as a common area.
+
+Valentine Godin at 18:37 - 18:50
+Yeah, but I need to make sure if they change it in one place, you need to be changing the other place. So the you, you, I mean, the. The unique idea is probably safest to make sure it doesn't at some point go wrong if they start doing odd things with it.
+
+Shaun Bowles at 18:51 - 19:16
+Right. No, you will have to. have to reference the unique ID, the system unique ID? We'd have to reference that to get the connection. But once you've got the connection, I can name the station however I want. you're still going to land on the right one. from the unique ID. But if they change their name, all you have to do is. parse the name out and display your data how you want. And you could also combine it, of course. So from this. from that level that I was giving you from the water use upload.
+
+Valentine Godin at 19:17 - 19:19
+Well, yeah, you can navigate it.
+
+Shaun Bowles at 19:19 - 20:48
+you can aggregate it down. So. You can create. as fuzzy or as Fine. of a display as you want from that. Yeah. on that same line. There's a scheduled activity table. All right, so those are. Almost the same name. schedule activity and schedule activity download. The, The difference is... downloaded gets created and this is again based on communication The downloaded table gets created. as we successfully download it to their Facebook. we're able to get that water use upload that we were just looking at. is because we send a schedule down to every faceplate it gets It's schedule. and then it executes against that. the schedule activity downloaded is created as we get a successful scent. to every faceplate. If it fails to a faceplate, it will not populate the download table. which again just means you could have a gap in your data. the scheduled activity is created at that. that time that I showed you in links. So for them, 3 55 p.m it creates the schedule that it's going to download so the schedule activity is the source that we're going to reference. to create the download.
+
+Valentine Godin at 20:51 - 20:52
+If you're going to report. Yep.
+
+Shaun Bowles at 20:54 - 20:54
+No, you're fine. Go ahead.
+
+Valentine Godin at 20:56 - 20:59
+What if they updated at 6pm? Two hours later.
+
+Shaun Bowles at 21:00 - 21:05
+stays the same. This doesn't change unless they do a subsequent. download.
+
+Valentine Godin at 21:07 - 21:08
+so okay
+
+Shaun Bowles at 21:09 - 21:25
+leaves you at a little bit of a risk because You have to pick a smart time to actually. Do your report. I would say, honestly, if you're going to report against this table. it might be your your most solid table if all you want to report against. is what they scheduled.
+
+Valentine Godin at 21:27 - 21:29
+This does not catch the manual. You don't grab the manual.
+
+Shaun Bowles at 21:31 - 21:50
+So if all you want to report is what they had. asked it to work or scheduled. You could hit this and you could do it in like. 1 a.m. They're not going to be downloading to the system at 1 a.m. And I would probably hit the schedule activity and not the downloaded. But then that's just a judgment call on what you want.
+
+Valentine Godin at 21:50 - 21:51
+Hmm.
+
+Shaun Bowles at 21:51 - 23:10
+There's. The risk. in that is that the way our satellites work is if they If they do not. receive a download. they will water the same thing. That they watered yesterday. which means it could be out of sync with what I asked it to do. If I made a change to schedule. And it doesn't hear the change. It's going to say, all right, cool. I'll just stick with what I've got. There's really no way around that. because For the sense of this report. the water use upload data is tied to the communication. So if it's not communicating. And it's watering an old schedule. If it's not communicating, you're not going to have water use upload. If it's not communicating and it didn't get the download, you're not going to have scheduled activity download. And If it's not communicating, it didn't take the download and had something to order. then your schedule activity doesn't matter. doesn't match what's out there. So there's going to be at some point a risk that you're not going to be. perfectly aligned. but that's going to be based on communication failures. If the course isn't running right, then your reporting isn't running right. That's not really on you. That's the fact that. You can't report on something that you can't communicate. You can't. Guarantee at that point. um I'm a fan of the schedule activity table for the report. I just put together a project for somebody. like a week ago. To do just that.
+
+Valentine Godin at 23:11 - 23:15
+um despite despite the fact that you could get some discrepancy
+
+Shaun Bowles at 23:16 - 23:38
+Yes. I just explained to them. the risk and actually i haven't This in particular hasn't been delivered to the customer. I was talking to their distributor about it. um And I just explained the risk that. you know, here's. Here's what we have to mitigate. Here's what we're going to deal with. And I explained everything that I just went over with you. Here's what I have access to do. And we just picked.
+
+Valentine Godin at 23:41 - 23:58
+Despite this one. Yeah, no, I mean, I understand. Anyway. It makes sense depending on the ones at least one they understand the boundaries they can make they can make they can take a decision kind of knowing the risk of and the pros and the cons of e-job approach.
+
+Shaun Bowles at 24:00 - 24:09
+I ended up picking the download table. the schedule activity download table they wanted to go with. what we know is at the faceplate. So that's where we landed. um
+
+Valentine Godin at 24:10 - 24:21
+Yeah, but that would be the same if you take the satellite data. even though satellite data is more of a headache to actually build. Or am I understanding this wrong?
+
+Shaun Bowles at 24:22 - 24:27
+Are you talking about from the original, the water use upload? That we went through 1st.
+
+Valentine Godin at 24:28 - 24:51
+Yes, the schedule download compared to what you shared, the second table you shared. which was the kind of every single time. the station gets in and sends data to the satellite. from what i understand so far that would be At the moment the least risky approach from a data perspective. accuracy
+
+Shaun Bowles at 24:54 - 26:33
+It might be, yeah. um the uh like i said it hinges that one hinges on there being good communication at least once The other The other rule that we run into that. Could affect you on that table. is Usually about twice a year courses will go into what we call overseed. And they put down fresh grass seed and then they have to water it. a ton to keep it alive and get it to take root. our Our upload function happens, I mentioned it happens every two hours on the even hour. but it only happens outside of their irrigation window. So if they are watering. all day. which tends to happen during oversea. They're... be a time. for it to trigger that automatic. What we have to do, our rule is it. waits until irrigation is completely finished. It has to be a minimum of. one hour. of No irrigation. and then it has to hit an even out. So. They have a 3 55 pm upload time which means the last even hour they could trigger it on would be 2 p.m. which means they'd have to be done watering. before 1 p.m. So you can have that minimum one hour wait. Then 2 p.m. can trigger the upload. realistically That's middle of the hottest part of the day with the most sun. They're going to be watering during that time of day, so they're probably not going to get it. and upload done. those days. And then they're going to water at night. And it doesn't matter. if you have a gap of irrigation where it finished at. like 4 a.m. and didn't water again until 10. because there's still water scheduled later in the day that is still your irrigation window so it will never trigger an upload on those days. That's a risk.
+
+Valentine Godin at 26:33 - 26:41
+so you're better off going with this K-Jone download because that every single time they download an irrigation on the system you receive it
+
+Shaun Bowles at 26:42 - 27:14
+Right. So we at least know what we intended to do for the day. and We can run from there. uh it's I don't want to get too hung up on the one-off situation because overseed is just a twice-a-year thing. and It's either going to be... You know, there'll have to be a conversation that, you know, if you're doing multiple downloads during oversea. Because that is the other part of it. During overseed, they'll change their schedule throughout the day and redownload. so unless you're trying to go in and... capture the data.
+
+Valentine Godin at 27:14 - 27:19
+What happens if they do a change and they re-download? How do you know that one was a fake one and one was a real one?
+
+Shaun Bowles at 27:22 - 27:28
+Well, that wouldn't really be a fake. It would just be depending on when you look at the data, what was present. So if you're changing your start time. Okay,
+
+Valentine Godin at 27:28 - 27:41
+so if they plan something at 4 p.m. and then they re-download at 6 p.m. p.m. you know before the first irrigation kicks in then you know there is a second download that holds.
+
+Shaun Bowles at 27:43 - 28:28
+Typically, And again, This is just for overseen, and I don't want you to get too wrapped up on the overseen because it's just a temporary part of the year. But if you're trying to account for every single thing. happens during overseed, the reason they do multiple downloads. is because we can only tell the satellite to do so many things at once. So if if i can tell it to do 10 things at once but i need to do 30 things in the day Then I'll send it 10 right now. And when it's done with 10, I'll create a new schedule and I'll send it the next 10. And I'll repeat that until I get it through its day. oversimplifying it because it does more than 10 that's the way it works Each set of 10 is totally valid. and they become part of the history. um They did water. It's just... Once you change that schedule and redownload with the next set of 10. the old 10. from scheduled activity.
+
+Valentine Godin at 28:30 - 28:34
+And can they even, once they've downloaded to the pay station can they cancel
+
+Shaun Bowles at 28:36 - 28:45
+they can cancel Yes. It doesn't clear it out. They can put it on Rainhold and then the only... Cancel. is to create a new schedule and read out them.
+
+Valentine Godin at 28:49 - 29:03
+but so would i how would i capture the fact that they ended up not irrigating because for example likelihood in Ireland it suddenly started raining so They've got to cancel. irrigating that grain. would I capture that in the scheduled download?
+
+Shaun Bowles at 29:04 - 29:35
+You would not. um because the download still exists as a download the water use upload would then be your friend. because If they put it on rain hold until it don't water. then The schedule. that we're looking at. The schedule still exists. But the water use upload would report. what it actually ran. So if it ran a partial. if part of your course got through irrigating before rainhole went on. And then the other half didn't irrigate. You'd be able to see that. that difference. You'd see the zero runtimes or the partial rough times for that matter.
+
+Valentine Godin at 29:37 - 29:40
+Very clear. Yes. very careful
+
+Daniel Kaufmann at 29:40 - 29:41
+Sorry, it's a lot of information.
+
+Shaun Bowles at 29:42 - 31:18
+It is a ton of information. and really comes down to this is a question that that We've all answered over here for years is how do I get a single source of truth for my water history from the software. And what we have to tell these guys. When they really need to report. accurate water consumption to to like their city or something. We had to tell the user. We don't get to tell them, you know, you don't get to show zone by zone. If you've got to tell... a city manager how many gallons I used or whatever they're reporting in. um You've got to get that from the pump. That's the only source of truth. That's the thing that runs every time your station is turned on. That doesn't help you here. um that's the problem we run into with this is there are so many ways for the water reporting data. to not align. to what really truly went down. We just can't catch it all. So we have to pick our best. We had to pick what's going to work the best for what they want to see. And then explain to them. where there could be discrepancies and make sure they understand and set that expectation ahead. We can give you all this stuff, but this is what it hinges on. may be inaccurate in these situations. You may not see anything. if you use water use upload but you guys are doing overseen and watering all day you're not going to get any reporting data for that day because it has to run. So. It's either... You don't get reporting data. or You. customer ...own the responsibility of at least one time... before the end of the day. you have to go in and click a button to manually pull that data through. You know, there's... We have to have those kinds of conversations. just to set the expectation. what they will or will not see.
+
+Valentine Godin at 31:20 - 31:20
+very good
+
+Shaun Bowles at 31:21 - 32:00
+This is the project that I put together for the customer last week. I just simplified it way down. But I pulled... For this guy, I pulled from the scheduled activity table. from this particular report. I think I ended up settling on the schedule activity downloads. So for my final release, I actually had it downloaded to this. But it's the same stuff. It's the same. information so I did a the few that I needed, the station descriptor, the duration, which is in seconds when we're pulling it from the schedule activity. The station flow And then I just do the math. and create a column called total gallons so I can tell him how many gallons he's going to run based on that downloaded data.
+
+Valentine Godin at 32:01 - 32:04
+Is it always gallons or that depends on the customer?
+
+Shaun Bowles at 32:04 - 32:05
+depends on the customer.
+
+Daniel Kaufmann at 32:06 - 32:09
+So this one. I'm surprised this was a gentleman.
+
+Shaun Bowles at 32:10 - 32:23
+no i know i named that column i physically when i created this script I'm named the column duration. divided by 60 times 60. Okay, fine, Just like this total gallon, so. That was just on me. These guys are actually running in cubic meters.
+
+Valentine Godin at 32:25 - 32:28
+And so the database would be linked to the unit. in the settings.
+
+Shaun Bowles at 32:29 - 32:30
+Yeah, you'll just create them out however you want.
+
+Valentine Godin at 32:31 - 32:33
+That's good news.
+
+Shaun Bowles at 32:35 - 32:46
+Totally under your control. That's just the data that we can present. this stuff. These three years. Amen. Not bad there. These three are the same no matter what. Very good.
+
+Valentine Godin at 32:48 - 32:49
+Very, very clear. Okay.
+
+Shaun Bowles at 32:49 - 33:00
+So I don't want to tell you which one to use. Ugh. I'm happy to help you with that. whichever one you choose to use. and i'd be happy to help you with whatever you need to to get the data together Looking right.
+
+Valentine Godin at 33:01 - 34:03
+Look, I mean, this is so limpid. limpid clay it's amazing so i will what i'll do is i will Digest it, slip on it, reread my notes. to make sure I understand this correctly. I will then have a discussion with. them. to understand the exact objective. Now that I understand the fine tuning of it. understand their point of view to make sure that we pick the right approach. and based on that go with something and at that point if I hit a wall or if I hit something where I'm not sure Before I break anything, I'll just. Reach out. And be like, hi. that's something and otherwise even if everything goes right then you can count on me to drop your line when everything has been happy because that's been That's extremely helpful and I really, really appreciate it. um the approach and the efficiency on this. um, so you can count on me to keep you posted there. Sure.
+
+Daniel Kaufmann at 34:04 - 34:07
+Yeah, well, I. We can give you a hand too.
+
+Valentine Godin at 34:08 - 34:08
+Yeah,
+
+Shaun Bowles at 34:08 - 34:13
+that's the way I talk. Totally recognize that was a huge data dump. That's a lot of stuff to take in at once.
+
+Valentine Godin at 34:14 - 34:40
+I also wanted you to see it work on it. This is how I talk about. Au table 1. And so I'm like, now I understand when I talk about this, how it's so clear in my head. But how he might not be clear to the person in front of me. I don't understand now why they sometimes look at me and be like, hang on. No, I feel it. I feel it right now. So that's fine. And I share the feeling of Clarity and non-clarity
+
+Shaun Bowles at 34:41 - 35:05
+Right. Well, digest all that as best you can. Yeah. um And then feel free to reach out. I have no problem if you want to go back over some or all of that information again after you've had a chance to sleep on it. Let me know if you need some more. discussion time i'm happy to go back over it with you because like i said that's a ton i get that it's impossible to take in that much information and just Step away and say. I know what I'm gonna do.
+
+Valentine Godin at 35:06 - 35:29
+So let me know. Thank you. Zo, zo, zo, Mariette. Super hervolgend. um yeah and then count on me and I need to obviously first. get um them i mean give them a call but i will do that in in the kind of maybe next week or the week after, depending on the schedule. make sure I have a time where I really explain to them different options. And then I'll keep you posted on progress.
+
+Shaun Bowles at 35:31 - 35:36
+And if... If it ain't. Does anybody at the course speak English? Yeah,
+
+Valentine Godin at 35:36 - 36:05
+they do. They're in Ireland. They all do. Again, I will keep you, I will, I will 100%. keep you and obviously i mean they're quite a bit um I suspect, Klein, and probably you probably have... project with them as well. So I'm sure we'll all keep in touch. um to make this a success. And if there's any. question uncertainty Count on me to be back. I will. No. try to pull my hair out, I'll be like, hi. For you, this is just... natural second language so please help me
+
+Shaun Bowles at 36:06 - 36:13
+Only now. I mean, we... I've been at this like 25 years. Yeah, we've been doing this for a while. You go like. Yeah, 17 or 18 years on it, I think.
+
+Daniel Kaufmann at 36:14 - 36:14
+18, I think.
+
+Shaun Bowles at 36:15 - 36:33
+18 years, so it's... What time? It's gotten a lot easier with time. uh but i'm more than happy to lend the knowledge and experience to to get you going on this project. So just let me know what you need. If you need me to help you. talk to the customer to go over. those explanations. Whatever you need. Just let me know what you need. We'll get you taken care of.
+
+Valentine Godin at 36:33 - 36:43
+Thank you. Thank you so, so much. Really, really appreciate it. Pleasure to. meet you maybe one day we'll get to meet face to face hopefully That would be great for you,
+
+Daniel Kaufmann at 36:43 - 36:44
+Sean. I'll never get you to Europe.
+
+Valentine Godin at 36:46 - 36:49
+right well if you ever do in belgium or in london just let me know
+
+Shaun Bowles at 36:50 - 36:57
+um we get a coffee yeah i totally pass through london all the time yeah it's like every other weekend i'm just our office
+
+Daniel Kaufmann at 36:58 - 37:07
+Our office is in Oval. So our office for NSN over there, although they wouldn't be able to talk to you like this. I think I'm supposed to go there this March. Jim Joy.
+
+Valentine Godin at 37:09 - 37:11
+Well, if you ever... Let me know.
+
+Daniel Kaufmann at 37:12 - 37:15
+All right. Sounds good. Let us know if you need anything else.
+
+Valentine Godin at 37:16 - 37:17
+Have a good day. You too.
+
+Shaun Bowles at 37:17 - 37:18
+You as well. Take care.
