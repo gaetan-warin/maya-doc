@@ -8,11 +8,11 @@
 ## Checklist
 
 ### Decisions (before starting)
-- [ ] **D1** Lynx data model → own `lynx_*` tables (recommended) vs reuse connected meter
-- [ ] **D2** Lynx agent repo → separate `maya-lynx-agent` (recommended) vs monorepo
-- [ ] **D3** Adare Manor backfill depth → 12 months from `water_use` (recommended)
+- [x] **D1** Lynx data model → **own `lynx_*` tables (decided)** — different granularity (daily/zone vs hourly/device), needs auto/manual volume split + sync audit trail. Both feed into `water_readings` for dashboard.
+- [x] **D2** Lynx agent repo → **separate `maya-lynx-agent` (decided)** — deployed as a self-contained installer (`.exe` via PyInstaller or `.msi`) on customer's Windows machine at the golf club. Zero shared code with Laravel/Vue. Simple install: drop to `C:\MayaLynx\`, configure `config.yaml`, register in Windows Task Scheduler.
+- [x] **D3** Adare Manor backfill depth → **configurable per club (decided)** — agent `--backfill --months N` flag pulls N months of history from Lynx `water_use` table, tagged as `data_source = 'backfill'`. Default 12 months. Configurable in `config.yaml` per club. Historical data uses midnight boundaries (not irrigation day) — acceptable trade-off for past data.
 - [x] **D4** Mobile push provider → **Expo Push (confirmed)** — already in production for tasks/incidents/spraying via `PushNotificationService.php`. Device tokens stored in `user_push_tokens`, registration via `POST /api/v2/device-register`.
-- [ ] **D5** Notification table name → `irrigation_daily_logs` (recommended, matches GitLab #348)
+- [x] **D5** Notification table name → **`irrigation_daily_logs` (decided)** — matches GitLab #348, reflects permanent daily log per outflow (not a transient notification).
 
 ### Phase 0 — Stabilization *(3–4 days, Week 1)*
 - [ ] **0.1** Fix bug #2254 — Cannot delete water records
