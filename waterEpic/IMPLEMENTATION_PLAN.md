@@ -119,6 +119,8 @@ irrigation_daily_logs:
 Artisan command `GenerateIrrigationNotifications` (daily cron):
 - Per tenant with `mobile_notifications_enabled = true` → per active outflow with `SourceWaterSettings` → check if date is in irrigation period + matches frequency (`daily`, `every_other_day`, `specific_weekdays`, `once_per_week`) → create `pending` notification
 - Calculate `suggested_value`: annual allowance ÷ remaining irrigation days, adjusted by ET correction factor + recent consumption patterns
+- **Past-date notifications:** define and implement behavior when the scheduler or a manual action targets a date in the past (e.g. auto-confirm, skip, or create as "late pending"). Document the chosen rule before coding.
+- **Legacy data filtering:** exclude legacy/pre-migration records from notification generation — define criteria (e.g. records before a cutoff date, records without a valid `SourceWaterSettings`, or tenants not yet onboarded to Water 2.0) and add filtering to the query so no spurious notifications are created.
 - **Resolves #2268**
 
 ### 1.4 — Notification APIs
