@@ -11,7 +11,7 @@
 - [ ] **D1** Lynx data model → own `lynx_*` tables (recommended) vs reuse connected meter
 - [ ] **D2** Lynx agent repo → separate `maya-lynx-agent` (recommended) vs monorepo
 - [ ] **D3** Adare Manor backfill depth → 12 months from `water_use` (recommended)
-- [ ] **D4** Mobile push provider → Expo Push (recommended, confirm with mobile team)
+- [x] **D4** Mobile push provider → **Expo Push (confirmed)** — already in production for tasks/incidents/spraying via `PushNotificationService.php`. Device tokens stored in `user_push_tokens`, registration via `POST /api/v2/device-register`.
 - [ ] **D5** Notification table name → `irrigation_daily_logs` (recommended, matches GitLab #348)
 
 ### Phase 0 — Stabilization *(3–4 days, Week 1)*
@@ -159,7 +159,25 @@ FE store calls `GET /water/graph-data` (water.js:118) → either create in `Wate
 
 ### 2.1 — Push notification service
 
-`MobileNotificationService` + `SendIrrigationPushNotifications` Artisan command (runs every minute, sends at each tenant's `preferred_reminder_time` via Expo Push). Respects `mobile_notifications_enabled`. **GitLab:** #370, #371
+No new push provider needed — reuse existing Expo Push infrastructure.
+
+**Existing infrastructure (already in production):**
+- `PushNotificationService.php` → sends to `https://exp.host/--/api/v2/push/send`
+- `user_push_tokens` table → stores `ExponentPushToken[...]` per user/device
+- `POST /api/v2/device-register` → mobile app already registers tokens on startup
+- Deduplication (30s cache + in-request), 7-language localization, error logging all built-in
+
+**New work:**
+- `SendIrrigationPushNotifications` Artisan command (runs every minute or via scheduler)
+- Query pending `irrigation_daily_logs` where tenant's `preferred_reminder_time` has arrived
+- Call existing `PushNotificationService::sendPushNotification()` with payload:
+  ```json
+  { "title": "Irrigation Reminder", "body": "You have N pending irrigation logs for today",
+    "data": { "task_type": "irrigation", "notification_date": "YYYY-MM-DD" } }
+  ```
+- Respects `mobile_notifications_enabled` + `user.enable_push_notification`
+
+**GitLab:** #370, #371
 
 ### 2.2 — Mobile notification list
 
