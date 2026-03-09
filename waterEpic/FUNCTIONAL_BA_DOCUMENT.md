@@ -56,7 +56,7 @@ The Water Page is partially built. The dashboard and basic water management work
 
 A greenkeeper's daily workflow should look like this:
 
-1. **Morning:** Receive a push notification on mobile — _"You have 3 irrigation zones pending for today"_
+1. **Reminder time:** Receive a push notification on mobile at the configured reminder time — _"You have 3 irrigation zones pending for today"_
 2. **Review:** Open Maya (web or mobile), see which outflows need attention, with a suggested water volume pre-calculated based on their annual budget and recent conditions
 3. **Respond:** Confirm or deny irrigation per zone, optionally entering the actual consumption value
 4. **Automatic:** For clubs with Toro Lynx, readings flow in automatically — no manual entry needed. The system reconciles actual vs scheduled irrigation.
@@ -109,12 +109,15 @@ Six metric cards arranged in a responsive grid:
    - **Deny** (did not irrigate) — records that irrigation was skipped
    - **Bulk respond** — select multiple notifications, confirm or deny all at once, with optional bulk value distribution across selected outflows
 
-4. **Notification lifecycle:**
-   - `pending` → waiting for user response
-   - `confirmed` → irrigation happened (value recorded)
-   - `denied` → irrigation did not happen
+4. **Manual entry interaction:** If a user adds a manual water record for a planned outflow/day from the Water Usage table, that counts as irrigation confirmation for that outflow/day. The system should not create an active notification for that same outflow/day, or should remove it from the active notification list if it already exists.
 
-5. **Display:** The web UI shows notifications for the past 7 days. Older notifications remain in the database as permanent daily logs.
+5. **Notification lifecycle:**
+   - `pending` → waiting for user response
+   - `confirmed` → irrigation confirmed
+   - `denied` → irrigation did not happen
+   - `unknown` → no user response within 7 days
+
+6. **Display:** The web UI shows active notifications for the past 7 days. After that window, unanswered items stop appearing as active prompts and remain in the daily log history.
 
 **What the user sees:**
 
@@ -138,10 +141,11 @@ Six metric cards arranged in a responsive grid:
 
 - Month view calendar with navigation (previous/next month)
 - Dropdown filter to select specific outflows or "All"
-- Color-coded dots on each date:
-  - **Green** = Irrigation confirmed
-  - **Light blue** = Irrigation planned (pending notification)
-  - Additional statuses possible (4-color logic per GitLab #1230)
+- Color-coded dots on each date using the intended 4-status calendar model:
+  - **Green** = Actual irrigation record exists for that day/outflow
+  - **Blue** = Irrigation confirmed via notification, but no actual water record has been entered yet
+  - **Red** = "No irrigation" confirmed
+  - **Light blue** = Planned irrigation day / pending confirmation
 - Hover tooltip showing total consumption for that day
 - Total "days watered" count for the visible month
 
@@ -149,10 +153,10 @@ Six metric cards arranged in a responsive grid:
 
 - Click a date to open a side panel
 - Side panel shows outflow status for that date
-- User can change status (confirm/deny irrigation) directly from the calendar
+- User can change status directly from the calendar only when there is no actual water record yet for that outflow/day
 - Status changes create or update the corresponding `irrigation_daily_log` record
 
-**Business rule:** Calendar status changes and notification responses share the same data model. Confirming irrigation from the calendar is identical to confirming a notification — both update the same `irrigation_daily_logs` row. One row per outflow per date (enforced by unique constraint).
+**Business rule:** Calendar status changes and notification responses share the same daily-log model. However, once an actual irrigation reading exists for a day/outflow, the calendar status should be locked to avoid inconsistencies between declared status and recorded consumption. One row per outflow per date is enforced in `irrigation_daily_logs`.
 
 ---
 
@@ -190,6 +194,7 @@ Six metric cards arranged in a responsive grid:
 
 **What needs to happen:**
 - Unified table structure to support multiple data providers (Shayp, Masgrau, Lynx, others)
+- Migrate existing Shayp and Masgrau flows from NiFi into the Python orchestrator
 - Clear distinction in the UI between IoT-sourced readings and manually entered readings
 - Pluggable architecture: adding a new meter vendor should not require code changes beyond a config entry
 
@@ -243,7 +248,7 @@ This reconciliation produces one authoritative record per zone per day. The user
 |---------|------------|-------|
 | **ET Correction Factor** | Percentage (0-100%) applied to ET values to adjust for local conditions | Tenant settings |
 | **Mobile Notifications** | Enable/disable push notifications for irrigation reminders | Tenant settings |
-| **Preferred Reminder Time** | Time of day to receive push notifications (e.g., 07:00) | Tenant settings |
+| **Preferred Reminder Time** | Time of day to receive push notifications (e.g., 15:00 site-local by default, configurable per tenant) | Tenant settings |
 | **Irrigation Period** | Start and end dates for the irrigation season (e.g., Apr 1 – Oct 31) | Per outflow |
 | **Irrigation Frequency** | How often irrigation occurs: daily, every other day, specific weekdays, once per week | Per outflow |
 | **Irrigation Weekdays** | Which days of the week (if frequency = specific weekdays) | Per outflow |
@@ -260,7 +265,7 @@ This reconciliation produces one authoritative record per zone per day. The user
 **Actor:** Greenkeeper at a club without connected meters or Lynx
 
 ```
-1. 07:00 — Receives push notification: "You have 4 pending irrigation zones for today"
+1. At the configured reminder time — receives push notification: "You have 4 pending irrigation zones for today"
 2. Opens Maya mobile app
 3. Sees 4 notification cards (one per active outflow)
 4. For Hole 1 Green: confirms irrigation, enters 12.5 m³
@@ -315,7 +320,7 @@ This reconciliation produces one authoritative record per zone per day. The user
 2. Sees progress bar at 72% (yellow) — 7 months into the year
 3. Compared to last year: 5% less consumption at the same point
 4. Notes: "We're tracking well, Lynx automation helped reduce over-watering"
-5. Exports annual report for the board presentation
+5. Uses the Water Budget figures and year-to-date comparison in the board presentation
 ```
 
 ---
@@ -327,10 +332,10 @@ Tenant (Golf Club)
   └── TenantWaterSettings (ET factor, notification prefs, reminder time)
   └── WaterSource[] (inflows and outflows)
         ├── SourceWaterSettings (irrigation period, frequency, weekdays, budget)
-        ├── WaterReading[] (manual entries + connected device records)
+        ├── WaterReading[] (manual entries + connected device records + Lynx-fed records)
         │     └── WaterSiteConsumption[] (distributed consumption per outflow)
         ├── IrrigationDailyLog[] (one per outflow per date)
-        │     status: pending | confirmed | denied
+        │     status: pending | confirmed | denied | unknown
         │     consumption_value, suggested_value
         │     source: schedule (auto-generated) | manual (user-created from calendar)
         └── ConnectedWaterMeterDevice[] (IoT meters linked to this source)
@@ -341,7 +346,7 @@ LynxClubConfig (per Lynx-connected club)
   └── LynxSyncLog[] (audit trail of syncs)
 ```
 
-**Key relationship:** Both manual readings and Lynx records flow into `WaterReading` (the unified table). The dashboard, calendar, budget, and charts all read from `WaterReading`. The data source (manual, IoT meter, Lynx) is tracked but doesn't affect how the data is displayed.
+**Key relationship:** Manual readings and connected-meter data are consumed through `WaterReading`. Lynx uses dedicated `lynx_*` sync tables (`LynxClubConfig`, `LynxWaterRecord`, `LynxSyncLog`) and then feeds normalized records into `WaterReading` for the Water Page dashboard, calendar, budget, and charts.
 
 ---
 
@@ -353,10 +358,11 @@ These items need business input before or during implementation:
 |---|----------|--------|--------|
 | **BQ1** | What should happen when the scheduler generates a notification for a past date (e.g., system was down for 2 days)? Options: auto-confirm, skip, or create as "late pending" for the user to review. | Affects notification generation logic (Phase 1.3) | Needs decision |
 | **BQ2** | Should legacy/pre-migration tenants receive notifications? Some clubs have old data but haven't been onboarded to Water 2.0 settings. | Affects notification filtering (Phase 1.3) | Needs decision |
-| **BQ3** | When a user confirms irrigation via the calendar AND a notification exists for the same date/source, which input takes precedence? (Currently: same row, last write wins) | Affects calendar + notification interaction (Phase 1.5) | Needs decision |
+| **BQ3** | What exact edit/lock rules should apply when a notification exists and an actual water reading is later added for the same date/source? Current direction: actual readings should lock the calendar status and remove the item from active notification flow. | Affects calendar + notification interaction (Phase 1.5) | Needs confirmation |
 | **BQ4** | What is the exact formula for `suggested_value`? Specifically: what data inputs, what weights, what edge cases (first day of season, no history, budget exhausted)? | Core business logic of the notification system (Phase 1.3) | Needs specification |
 | **BQ5** | How should Lynx zones map to Maya outflows? Auto-create a WaterSource per zone on first sync, or require manual mapping in Back Office? | Affects Lynx onboarding UX (Phase 4.A5) | Needs decision |
 | **BQ6** | Should the mobile notification show per-outflow detail or just a summary count? | Affects push notification content (Phase 2.1) | Needs decision |
+| **BQ7** | What final 4-status color mapping should ship for the calendar? Core epic content uses green/blue/red/light blue, while later discussion proposes purple for manual-entry confirmation. | Affects final calendar UX and QA expectations | Needs decision |
 
 ---
 
@@ -369,7 +375,7 @@ These items need business input before or during implementation:
 | Water budget tracking is accurate | Budget calculations match manual audit within 2% |
 | Mobile notifications drive engagement | Push notification open rate >50% |
 | System reliability | Lynx sync success rate >98%, <1h mean time to recover from missed sync |
-| Known bugs resolved | All 4 Phase 0 bugs closed and verified in production |
+| Known stabilization bugs resolved | All 4 Phase 0 stabilization bugs (#2254, #2258, #2263, #2283) closed and verified in production |
 
 ---
 
@@ -381,9 +387,9 @@ These items need business input before or during implementation:
 | **Phase 1** | Working notifications + calendar persistence — the core daily workflow | Weeks 2-4 |
 | **Phase 2** | Mobile push notifications + mobile API — irrigation on the go | Weeks 3-5 |
 | **Phase 3** | Unified connected meter architecture — foundation for multi-vendor | Weeks 5-6 |
-| **Phase 4** | Toro Lynx integration — automatic irrigation data for Adare Manor | Weeks 6-10 |
-| **Phase 5** | QA + staging promotion — production readiness | Weeks 10-11 |
-| **Phase 6** | Vendor strategy — roadmap for Shayp, Masgrau, others | Week 11+ |
+| **Phase 4** | NiFi vendor migration — move Shayp and Masgrau into the Python orchestrator, then document future vendor onboarding | Weeks 6-8 |
+| **Phase 5** | Toro Lynx integration — automatic irrigation data for Adare Manor | Weeks 8-11 |
+| **Phase 6** | QA + staging promotion — production readiness | Weeks 11-12 |
 
 ---
 
