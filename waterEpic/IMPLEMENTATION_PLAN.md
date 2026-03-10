@@ -17,7 +17,7 @@ Epic 341 replaces Epic 253. Major scope changes:
 
 ---
 
-## Checklist
+## Already Verified in Code (Do Not Rebuild)
 
 ### Decisions (before starting)
 - [x] **D1** Lynx data model → **own `lynx_*` tables (decided)** — different granularity (daily/zone vs hourly/device), needs auto/manual volume split + sync audit trail. Both feed into `water_readings` for dashboard.
@@ -84,7 +84,7 @@ Epic 341 replaces Epic 253. Major scope changes:
 
 ---
 
-## Context
+## Phase 1 — Stabilize Existing Water Functionality
 
 - **Developers left** — no verbal handover, only codebase + documents
 - **Routes confirmed** registered via `RouteServiceProvider.boot()` under `api/v2`
@@ -193,9 +193,13 @@ FE store calls `GET /water/graph-data` (water.js:118) → either create in `Wate
 
 ## Phase 3 — Toro Lynx Connector
 
-**Goal:** Full Lynx integration for Adare Manor pilot. Two parallel workstreams.
+**Goal:** reuse the existing push infrastructure to unblock mobile water flows.
 
-### Workstream A — Cloud Ingest API (Laravel)
+- [ ] **6.1** Create water irrigation push job/command using the existing `PushNotificationService`
+- [ ] **6.2** Create mobile water notification list endpoint
+- [ ] **6.3** Create mobile water submit/confirm endpoint
+- [ ] **6.4** Respect tenant reminder time + user push enablement
+- [ ] **6.5** Write mobile-facing API documentation with payload examples
 
 **3.A1 — API Contract + Data Model (1d)**
 
@@ -317,7 +321,7 @@ Water source CRUD, reading CRUD (manual + connected + Lynx), dashboard cards/mod
 
 ---
 
-## Timeline
+## Phase 9 — QA, Cleanup, and Release Readiness
 
 ```
 WK 1  ║ Phase 0: Bug fixes (#2254, #2258, #2263, #2283) + verify existing Water Page
@@ -330,7 +334,17 @@ WK 7  ║ Phase 4: QA, acceptance criteria, regression
 WK 8  ║ Buffer / Phase 5: Vendor strategy (planning only)
 ```
 
-## Dependencies
+- [ ] **9.1** Add water-specific automated tests for all new APIs
+- [ ] **9.2** Run a focused Water 2.0 regression pass:
+  - source CRUD
+  - reading CRUD
+  - dashboard cards
+  - calendar
+  - notifications
+  - connected meter logs
+- [ ] **9.3** Verify which “stage” issues are already present in code vs still undocumented
+- [ ] **9.4** Decide whether legacy Water v1 (`/water/graph-data`) stays in scope
+- [ ] **9.5** If legacy Water v1 is out of scope, remove it from the critical path and document it as cleanup work
 
 ```
 Phase 0 → Phase 1 → Phase 2
