@@ -1,24 +1,37 @@
 # Water Epic — Comprehensive Gap Analysis Report
 
-**Date:** 2026-03-02
+**Date:** 2026-03-10 (updated to align with Epic 341)
 **Scope:** Core 2.0 (Laravel backend) + Web (Vue 3 frontend)
-**Source documents:** Status_epic.md, technical-documentation.md, HANDOVER-LYNX-CONNECTOR.md, MSM call transcript, Epic 253 (GitLab HTML export — 50 issues)
+**Source documents:** Status_epic.md, technical-documentation.md, HANDOVER-LYNX-CONNECTOR.md, MSM call transcript, Epic 341 (GitLab — replaces Epic 253)
+
+---
+
+## Scope Change Notice
+
+**Epic 341 replaces Epic 253.** The following features are **cancelled** and no longer represent gaps:
+- Irrigation notifications & planning (entire module)
+- Mobile push notifications & mobile APIs
+- 4-color calendar system (simplified to 2 colors)
+- Notification-related settings (frequency, mobile toggle, reminder time)
+- Daily irrigation logs table
+
+This gap analysis reflects only what is needed for **Epic 341 delivery** (end of March 2026).
 
 ---
 
 ## Executive Summary
 
-The Water Epic is **partially implemented**. The core water management foundation (sources, readings, consumption tracking, dashboard) is solid, but several critical modules are incomplete or entirely missing. The documentation describes **4 major capability areas**, and the current state is:
+| Capability Area | Backend | Frontend | Overall | Action |
+|----------------|---------|----------|---------|--------|
+| Water Sources & Readings (CRUD) | ~90% | ~85% | ~87% | Verify + fix 4 bugs |
+| Dashboard & Analytics (Cards, Charts) | ~80% | ~80% | ~80% | Verify all cards/modals |
+| Days Watered Calendar | ~70% | ~60% | ~65% | Simplify to 2 colors, remove notification logic |
+| Connected Meters (Shayp/Masgrau) | ~85% | ~75% | ~80% | Verify + promote staging items |
+| Toro Lynx Connector | 0% | 0% | 0% | **BUILD — primary deliverable** |
+| ~~Irrigation Notifications~~ | — | — | — | ~~CANCELLED~~ |
+| ~~Mobile APIs~~ | — | — | — | ~~CANCELLED~~ |
 
-| Capability Area | Backend | Frontend | Overall |
-|----------------|---------|----------|---------|
-| Water Sources & Readings (CRUD) | ~90% | ~85% | ~87% |
-| Dashboard & Analytics (Cards, Charts) | ~80% | ~80% | ~80% |
-| Irrigation Notifications & Calendar | ~30% | ~60% | ~45% |
-| Connected Meters & Lynx Connector | ~15% | ~0% | ~8% |
-| Mobile APIs | 0% | N/A | 0% |
-
-**Critical finding:** Water API routes defined in `core-2.0/routes/api/water.php` may not be registered in the main router — needs verification.
+**Critical finding:** Water API routes confirmed registered via `RouteServiceProvider.boot()` under `api/v2`.
 
 ---
 
@@ -63,7 +76,7 @@ The Water Epic is **partially implemented**. The core water management foundatio
 | Usage service | DONE | `core-2.0/app/Services/Water/WaterUsageService.php` |
 | Main water view | DONE | `web/src/views/water.vue` |
 | Header section | DONE | `web/src/components/water2/sections/WaterHeaderSection.vue` |
-| Top section (6 cards + notifications) | DONE | `web/src/components/water2/sections/WaterTopSection.vue` |
+| Top section (6 cards) | DONE | `web/src/components/water2/sections/WaterTopSection.vue` |
 | ET Card | DONE | `web/src/components/water2/components/cards/ETCard.vue` |
 | Rainfall Card | DONE | `web/src/components/water2/components/cards/RainfallCard.vue` |
 | Water Usage Card | DONE | `web/src/components/water2/components/cards/WaterUsageCard.vue` |
@@ -87,9 +100,9 @@ The Water Epic is **partially implemented**. The core water management foundatio
 | Source settings API | DONE | `PUT /settings/water/source/{source}` |
 | Period validation API | DONE | `POST /settings/water/source/{source}/validate-period` |
 | Water Configuration UI | DONE | `web/src/components/setting/water/components/WaterConfiguration.vue` |
-| ET Factor, notifications toggle, reminder time | DONE | In WaterConfiguration.vue |
+| ET Factor setting | DONE | In WaterConfiguration.vue |
 
-### 1.5 Connected Water Meter (Basic Model Only)
+### 1.5 Connected Water Meter (Basic Model)
 | Component | Status | Location |
 |-----------|--------|----------|
 | ConnectedWaterMeterDevice model | DONE | `core-2.0/app/Models/ConnectedWaterMeterDevice.php` |
@@ -111,109 +124,92 @@ All **21 water-related migrations** are present, covering:
 
 ---
 
-## 2. WHAT IS PARTIALLY IMPLEMENTED (Gaps Within Existing Features)
+## 2. GAPS REQUIRING ACTION (aligned with Epic 341)
 
-### 2.1 Irrigation Notifications — Frontend Built, Backend Missing
-
-**Severity: HIGH**
-
-The frontend has a complete notification UI but the backend APIs don't exist.
-
-| Component | FE Status | BE Status | Gap |
-|-----------|-----------|-----------|-----|
-| Notification list UI (past 7 days) | DONE | MISSING | No `GET /water/irrigation-notifications` endpoint |
-| Multi-select & select all controls | DONE | MISSING | No backend to call |
-| Bulk mark Yes/No (no value) | DONE | MISSING | No `POST /water/irrigation-notifications/batch-update` |
-| Bulk mark Yes/No with values | DONE | MISSING | No bulk value distribution endpoint |
-| Single notification expansion + input | DONE | MISSING | No `PATCH /water/irrigation-notifications/{id}` |
-| NotificationCard.vue | DONE | — | UI complete but calling non-existent endpoints |
-| BulkConsumptionPanel.vue | DONE | — | Panel built but no API integration |
-
-**GitLab Issues (all TODO):**
-- #348: Create database table for Daily Irrigation Logs
-- #349: Create API: Fetch Notifications (Past 7 Days, Per Outflow)
-- #350: Create API: Bulk Mark Yes/No (No Value)
-- #351: Create API: Bulk Mark Yes/No With Values (Distribution)
-- #352: Create API: Submit Single Notification Response with Value
-- #363: Implement Suggested Value Calculation Service/API
-- #364: Implement Min/Max Range Service/API for Expanded Notification
-- #437: Update Notification Scheduler/Generator per Outflow Settings
-
-**What's needed:**
-1. Create `irrigation_notifications` (or `daily_irrigation_logs`) database table + migration
-2. Create IrrigationNotification model
-3. Create notification generation scheduler (daily cron based on outflow irrigation settings)
-4. Create API controller with endpoints: list, single update, batch update
-5. Implement suggested value calculation service
-6. Implement min/max range validation service
-7. Wire up existing frontend to real API
-
-### 2.2 Days Watered Calendar — Status Changes Not Persisted
+### 2.1 Water Record Bugs — Must Fix
 
 **Severity: HIGH**
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| Calendar UI (month view, color codes) | DONE | `DaysWateredModalContent.vue` |
-| Outflow filter dropdown | DONE | Working |
-| Status color legend | DONE | green/red/blue/light-blue |
-| Side panel for status selection | DONE | `OutflowStatusPanel.vue` |
-| **API call to save status change** | **TODO** | `useDateClickHandler.js:46` has `// TODO: Call API to save the status change` |
-| Calendar status update API | PARTIAL | `PUT /water/calendar/sources/{sourceId}/status` referenced in store but not confirmed in backend |
-| Calendar card logic (4 color statuses) | TODO | GitLab #1230: still TODO |
+| Bug # | Description | Status | Action |
+|-------|-------------|--------|--------|
+| #2254 | Cannot delete water records | Bug | **FIX** |
+| #2258 | Cannot update water records | Bug | **FIX** |
+| #2263 | Previous reading value wrong in message | Bug | **FIX** |
+| #2283 | Calendar total consumption wrongly updated | Bug | **FIX** |
+| #2259 | Calendar error on status change | Bug | **CLOSE** — notification feature cancelled |
+| #2268 | Irrigation notifications not generating | Bug | **CLOSE** — notification system cancelled |
 
-**GitLab Issues:**
-- #439: Extend Days Watered APIs: Return Notification Status Per Day/Outflow (TODO)
-- #440: Create Days Watered API: Update Notification Status from Calendar (developer testing)
-- #1230: Implement Calendar Card Logic with four colour code statuses (TODO)
+### 2.2 Days Watered Calendar — Needs Simplification
 
-### 2.3 Notification API Integration (Frontend ↔ Backend)
+**Severity: MEDIUM**
 
-**Severity: HIGH**
+| Component | Current Status | Required by Epic 341 |
+|-----------|---------------|---------------------|
+| Calendar UI (month view) | DONE (4-color) | Simplify to 2 colors (green/red) |
+| Outflow filter dropdown | DONE | Keep |
+| Status color legend | DONE (green/red/blue/light-blue) | Reduce to green/red only |
+| Side panel for status selection | DONE (`OutflowStatusPanel.vue`) | Simplify — toggle green ↔ red only |
+| Click-to-toggle | TODO (`useDateClickHandler.js:46`) | Implement with connected meter/Lynx data protection |
+| Light blue "planned" dots | DONE | **REMOVE** |
+| Calendar card logic (4 colors) | TODO (#1230) | **CANCEL** — 2 colors only |
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| FE store methods defined | DONE | `fetchIrrigationNotifications()`, `updateIrrigationNotification()`, `batchUpdateIrrigationNotifications()` in `water.js` |
-| API integration wiring | BLOCKED | GitLab #1235: "Implement API Integration for Notifications (FE)" — status: **BLOCKED** |
-| Validation rules (FE) | PARTIAL | Basic status validation exists, comprehensive rules missing |
+### 2.3 Notification UI — Must Remove
 
-### 2.4 Water Record Bugs (Known Issues)
+**Severity: HIGH (dead code calling non-existent endpoints)**
 
-| Bug # | Description | Status |
-|-------|-------------|--------|
-| #2254 | Water Data Management table — cannot delete records | Bug |
-| #2258 | Water Data Management table — cannot update records | Bug |
-| #2259 | Days Watered Calendar — inappropriate error on status change | Bug |
-| #2263 | Water Meter reading add/edit — previous reading value wrong | Bug |
-| #2268 | Irrigation Notifications are not generating | Bug |
-| #2283 | Irrigation calendar — total consumption value wrongly updated | Bug |
+The frontend has a complete notification UI that must be **removed** per Epic 341:
 
-### 2.5 Connected Meter — APIs Need Update for IoT vs Manual Distinction
+| Component | Current Status | Action |
+|-----------|---------------|--------|
+| Notification list UI (past 7 days) | DONE | **REMOVE from UI** |
+| Multi-select & select all controls | DONE | **REMOVE** |
+| Bulk mark Yes/No controls | DONE | **REMOVE** |
+| Single notification expansion + input | DONE | **REMOVE** |
+| NotificationCard.vue | DONE | **REMOVE** |
+| BulkConsumptionPanel.vue | DONE | **REMOVE** |
+| FE store: `fetchIrrigationNotifications()` | DONE | **DISABLE** |
+| FE store: `updateIrrigationNotification()` | DONE | **DISABLE** |
+| FE store: `batchUpdateIrrigationNotifications()` | DONE | **DISABLE** |
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| Extend APIs to identify IoT vs Manual | IN REVIEW | GitLab #384: "developer in review" |
-| Water Records Ingestion for Distributed Bulk Values | TESTING | GitLab #438: "developer testing" |
+### 2.4 Settings — Remove Notification-Related Fields
 
-### 2.6 Unified Table Structure for Connected Meters
+**Severity: LOW**
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| Design unified table structure | IN PROGRESS | GitLab #427 |
-| Implement unified table in DB | TODO | GitLab #428 |
-| Migrate existing data to unified table | TODO | GitLab #429 |
-| Update APIs for unified table | TODO | GitLab #430 |
-| Update cron jobs for daily totals | TODO | GitLab #431 |
+| Setting | Current Status | Action |
+|---------|---------------|--------|
+| Annual water allowance | DONE | Keep |
+| Irrigation period (from/to) | DONE | Keep |
+| ET correction factor | DONE | Keep |
+| Irrigation frequency | DONE in UI | **REMOVE from UI** (keep code) |
+| Mobile notifications toggle | DONE in UI | **REMOVE from UI** |
+| Preferred reminder time | DONE in UI | **REMOVE from UI** |
+
+### 2.5 Connected Meter — Needs Verification & Promotion
+
+**Severity: MEDIUM**
+
+| Component | Status | Action |
+|-----------|--------|--------|
+| IoT vs Manual distinction (#384) | IN REVIEW | **VERIFY** and merge |
+| Bulk value ingestion (#438) | TESTING | **VERIFY** and merge |
+| Calendar status update (#440) | TESTING | **VERIFY** and merge |
+| 8 staging items (#376–#383) | ON STAGING | **VERIFY** and promote to production |
+
+### 2.6 Graph-Data Endpoint — Missing
+
+**Severity: LOW**
+
+FE store calls `GET /water/graph-data` (water.js:118) but endpoint doesn't exist. Either create in `WaterController` or redirect FE to existing `/water/usage`.
 
 ---
 
-## 3. WHAT IS COMPLETELY MISSING
+## 3. WHAT MUST BE BUILT (Primary Deliverable)
 
 ### 3.1 Toro Lynx Connector — Entire Module
 
 **Severity: CRITICAL (committed to Adare Manor, target end of March 2026)**
 
-**Zero code exists in the codebase.** The handover document describes a full two-sided architecture:
+**Zero code exists in the codebase.**
 
 #### 3.1a Cloud Ingest API (Laravel side) — NOT STARTED
 | Story | Description | Status |
@@ -221,8 +217,8 @@ The frontend has a complete notification UI but the backend APIs don't exist.
 | A1 | API contract & data model (JSON schemas, DB migrations) | NOT STARTED |
 | A2 | Club config & API key management (Back Office UI + middleware) | NOT STARTED |
 | A3 | Ingest API endpoint (`POST /api/v2/lynx/sync`) | NOT STARTED |
-| A4 | Health monitoring (dashboard, alerts, sync logs) | NOT STARTED |
-| A5 | Data access layer for Water Page (feeding Epic 253) | NOT STARTED |
+| A4 | Health monitoring — minimal MVP (Slack alerts for CS team) | NOT STARTED |
+| A5 | Data access layer for Water Page (zones as outflows) | NOT STARTED |
 
 **Required database tables (none exist):**
 - `lynx_club_configs` — per-club settings, API key hash, last sync timestamp
@@ -245,7 +241,7 @@ The frontend has a complete notification UI but the backend APIs don't exist.
 | B2 | Agent: Reconciliation engine (actuals/scheduled merge) | NOT STARTED |
 | B3 | Agent: HTTPS push to Maya API | NOT STARTED |
 | B4 | Agent: CLI, scheduling, logging | NOT STARTED |
-| B5 | Agent: Windows installation package (.msi) | NOT STARTED |
+| B5 | Agent: Windows package (.exe via PyInstaller) | NOT STARTED |
 
 **Required Python components (none exist):**
 - SQL Server connection to `lynx_main` via `pyodbc`/`pymssql`
@@ -260,96 +256,85 @@ The frontend has a complete notification UI but the backend APIs don't exist.
 - PyInstaller packaging to `.exe`
 - Windows Task Scheduler integration
 
-#### 3.1c Back Office UI (Vue) — NOT STARTED
-- Lynx Connectors list (all clubs, sync status)
+#### 3.1c Back Office UI (Vue) — NOT STARTED (Minimal MVP)
 - Club config form (tenant, units, timezone, irrigation day start, API key generation)
-- Sync log viewer (per-club, last 30 syncs)
-- Health alerts display
+- Basic sync status visibility for CS team
+- Full dashboard and sync log viewer deferred to V2
 
-### 3.2 Mobile APIs — Entire Module
-
-**Severity: HIGH**
-
-| Story | Description | Status |
-|-------|-------------|--------|
-| #370 | Push Notification Generation API (Expo-based) | TODO |
-| #371 | Create New Mobile Notification Service | TODO |
-| #372 | Extend "Add Water Records" API for Mobile entries | TODO |
-| #436 | Create Mobile Notifications List Endpoint | TODO |
-
-**Required components (none exist):**
-- Mobile push notification service (Expo integration)
-- Mobile-specific notification list endpoint
-- Mobile water record entry endpoint
-- Push notification scheduling based on `preferred_reminder_time`
-
-### 3.3 Third-Party Water Meter Integrations (Shayp, Masgrau, etc.)
-
-**Severity: MEDIUM**
-
-The connected meter model exists but is **completely generic** — no vendor-specific integrations:
-- Zero references to "Shayp" in codebase
-- Zero references to "Masgrau" in codebase
-- No ETL pipelines for external data ingestion
-- No OAuth/webhook integrations with vendors
-- No vendor onboarding configuration UI
-- Strategic direction still undefined (per Status_epic.md)
-
-### 3.4 Health Monitoring & Alerting System
-
-**Severity: MEDIUM**
-
-No water-specific health monitoring exists:
-- No sync health tracking
-- No alert on missed data syncs
-- No data quality checks
-- No anomaly detection
-- No operational dashboard for water system health
+#### 3.1d Water Page Integration — NOT STARTED
+- Lynx zones appear as outflows in all views (Usage card, Usage modal, Days Watered, Budget, Records)
+- Per-hole/zone breakdown when Lynx outflow is selected
+- Source icon: 🔗 irrigation system
+- "Hourly" toggle hidden for Lynx outflows (daily data only)
 
 ---
 
-## 4. ARCHITECTURAL CONCERNS
+## 4. CANCELLED FEATURES (No Longer Gaps)
 
-### 4.1 Route Registration Issue
-The water routes in `core-2.0/routes/api/water.php` may not be properly included in the main `routes/api.php`. This needs **immediate verification** — if routes aren't registered, the entire water API is unreachable.
+The following were gaps under Epic 253 but are **cancelled** under Epic 341:
 
-### 4.2 Frontend Calling Non-Existent Endpoints
-The Pinia store (`web/src/store/water.js`) defines API calls to endpoints that don't exist in the backend:
-- `GET /water/irrigation-notifications`
-- `PATCH /water/irrigation-notifications/{id}`
-- `POST /water/irrigation-notifications/batch-update`
-- `PUT /water/calendar/sources/{sourceId}/status`
+### ~~4.1 Irrigation Notifications~~ — CANCELLED
+- ~~Notification backend (scheduler, APIs, suggested value, min/max range)~~
+- ~~Daily irrigation logs table~~
+- ~~Notification API integration (FE ↔ BE)~~
+- **GitLab issues to close:** #348, #349, #350, #351, #352, #363, #364, #437, #1235
 
-This means the notification UI will fail silently or show errors when users interact with it.
+### ~~4.2 Mobile APIs~~ — CANCELLED
+- ~~Push notification service~~
+- ~~Mobile notification list endpoint~~
+- ~~Mobile water record entry endpoint~~
+- **GitLab issues to close:** #370, #371, #372, #436
 
-### 4.3 Key Decision Pending: Lynx Data Model
-The handover document (Section 5, Q1) asks: **Can Lynx data use Epic 253's connected meter tables?**
-- If YES → Lynx becomes another source in existing pipeline (simpler)
-- If NO → Dedicated `lynx_water_records` tables needed
+### ~~4.3 Calendar 4-Color System~~ — CANCELLED
+- ~~Calendar card logic with 4 color statuses~~
+- ~~Notification status per day/outflow~~
+- **GitLab issues to close:** #439, #1230
 
-This decision hasn't been made and blocks the entire Lynx Connector implementation.
+### ~~4.4 Third-Party Vendor Integrations~~ — DEFERRED to V2 Q2 2026
+- ~~Shayp/Masgrau vendor-specific integrations~~
+- ~~ETL pipelines, OAuth/webhook integrations~~
+- ~~Vendor onboarding configuration UI~~
 
 ---
 
-## 5. GitLab ISSUE STATUS SUMMARY
+## 5. ARCHITECTURAL CONCERNS
 
-### By Status (50 total issues):
+### 5.1 Route Registration — RESOLVED
+Water routes confirmed registered via `RouteServiceProvider.boot()` under `api/v2`.
 
-| Status | Count | Issues |
+### 5.2 Frontend Calling Non-Existent Endpoints — CLEANUP NEEDED
+The Pinia store (`web/src/store/water.js`) defines API calls to endpoints that don't exist and are now **cancelled**:
+- `GET /water/irrigation-notifications` → **disable/remove**
+- `PATCH /water/irrigation-notifications/{id}` → **disable/remove**
+- `POST /water/irrigation-notifications/batch-update` → **disable/remove**
+- `PUT /water/calendar/sources/{sourceId}/status` → **evaluate** — may still be needed for simple green/red toggle
+
+**Action:** Remove or disable these store methods to prevent silent errors in production.
+
+### 5.3 Lynx Data Model — DECIDED
+Own `lynx_*` tables — different granularity (daily/zone vs hourly/device). Lynx records feed into `WaterReading` with `is_connected_device_record = true` for dashboard display.
+
+---
+
+## 6. GitLab ISSUE STATUS SUMMARY (Updated for Epic 341)
+
+### Disposition
+
+| Action | Count | Issues |
 |--------|-------|--------|
-| Deployed on stage | 8 | #376, #377, #378, #379, #380, #381, #382, #383 |
-| Developer testing | 8 | #438, #440, #1040, #1041, #1042, #1058, #1059, #1229, #1233, #1234 |
-| Developer in review | 1 | #384 |
-| In progress | 1 | #427 |
-| TODO (not started) | 14 | #348, #349, #350, #351, #352, #363, #370, #371, #372, #428, #429, #430, #431, #436, #437, #439, #1224, #1230 |
-| Blocked | 2 | #346, #1235 |
-| Bug | 6 | #2254, #2258, #2259, #2263, #2268, #2283 |
-| Unspecified | ~10 | #345, #364, #1192, #1193, etc. |
+| **Fix (bugs)** | 4 | #2254, #2258, #2263, #2283 |
+| **Close (cancelled bugs)** | 2 | #2259, #2268 |
+| **Close (cancelled features)** | 15 | #348, #349, #350, #351, #352, #363, #364, #370, #371, #372, #436, #437, #439, #1230, #1235 |
+| **Verify & promote** | 8 | #376, #377, #378, #379, #380, #381, #382, #383 |
+| **Verify & merge** | 3 | #384, #438, #440 |
+| **Keep for QA** | 3 | #1192, #1193, #1224 |
+| **No longer applicable** | 2 | #345, #346 |
+| **New (Lynx)** | 12 | Stories 3.A1–A5, 3.B1–B5, 3.C1–C2 |
 
-### Items "deployed on stage" that need production verification:
+### Items on staging — need production verification
 - #376: Water Records API with Advanced Filters
 - #377: Monthly Irrigation Data API
-- #378: Update Notification Status API
+- #378: Update Notification Status API *(may need adjustment — notification concept changed)*
 - #379: Annual Outflow Data API
 - #380: ET Data API
 - #381: Rainfall Data API
@@ -358,48 +343,49 @@ This decision hasn't been made and blocks the entire Lynx Connector implementati
 
 ---
 
-## 6. PRIORITY ACTION PLAN
+## 7. PRIORITY ACTION PLAN (Updated for Epic 341)
 
-### P0 — Immediate (Blocking production and commitments)
+### P0 — Immediate (Blocking production)
 
-1. **Verify water route registration** in `routes/api.php` — if broken, nothing works
-2. **Fix 6 known bugs** (#2254, #2258, #2259, #2263, #2268, #2283) — users are hitting these
-3. **Complete irrigation notification backend** (#348-#352, #363, #364, #437) — FE is built and waiting
+1. **Fix 4 bugs** (#2254, #2258, #2263, #2283) — users are hitting these
+2. **Remove notification UI** — dead code calling non-existent endpoints, will cause errors
+3. **Simplify calendar to 2 colors** — remove light blue "planned" dots
 
-### P1 — High (Adare Manor commitment, target March/April 2026)
+### P1 — High (Adare Manor commitment, target end of March 2026)
 
-4. **Make Lynx data model decision** (Q1 from handover doc) — blocks everything below
-5. **Build Lynx Cloud Ingest API** (stories A1-A5) — Laravel endpoints, auth, health monitoring
-6. **Build Lynx Sync Agent** (stories B1-B5) — Python agent, reconciliation, packaging
-7. **Build Lynx Back Office UI** — club config, sync logs, health dashboard
+4. **Build Lynx Cloud Ingest API** (stories A1–A5) — Laravel endpoints, auth, health monitoring MVP
+5. **Build Lynx Sync Agent** (stories B1–B5) — Python agent, reconciliation, packaging
+6. **Build minimal Back Office UI** — club config, API key management
+7. **Wire Lynx data into Water Page** — zones as outflows in all views
 
-### P2 — Medium (Feature completion)
+### P2 — Medium (Feature completion for release)
 
-8. **Complete calendar status persistence** (fix TODO in `useDateClickHandler.js`)
-9. **Finish unified connected meter table structure** (#427-#431)
-10. **Complete IoT vs Manual reading distinction** (#384, #438)
-11. **Promote staging items to production** (#376-#383)
+8. **Verify connected meters work** — Shayp/Masgrau data, IoT vs manual, daily aggregation
+9. **Promote 8 staging items to production** (#376–#383)
+10. **Close cancelled GitLab issues** — 15 notification/mobile issues + 2 cancelled bugs
+11. **Fix graph-data endpoint** — create or redirect
 
-### P3 — Lower (Mobile & future integrations)
+### P3 — Post-release
 
-12. **Design and build mobile APIs** (#370-#372, #436)
-13. **Plan third-party meter vendor integrations** (Shayp, Masgrau)
-14. **Build health monitoring system**
+12. **Full health monitoring dashboard** (V2)
+13. **MSI installer for agent** (April rollout ~10 clubs)
+14. **Vendor onboarding architecture** (Q2 2026)
+15. **Data source conflict handling** (Shayp + Lynx on same site, Q2 2026)
 
 ---
 
-## 7. RISK REGISTER
+## 8. RISK REGISTER (Updated)
 
 | Risk | Impact | Likelihood | Mitigation |
 |------|--------|------------|------------|
-| Lynx pilot deadline (end March) with zero code | HIGH | HIGH | Start A1 immediately, parallelize cloud + agent |
-| Water routes not registered = entire API broken | CRITICAL | MEDIUM | Verify immediately |
-| FE calling non-existent BE endpoints = user errors | HIGH | HIGH | Implement notification backend or add graceful fallbacks |
+| Lynx pilot deadline (end March) with zero code | HIGH | HIGH | Start A1 immediately, parallelize cloud + agent workstreams |
+| Notification UI left in place → user errors on non-existent endpoints | HIGH | HIGH | Remove notification UI in Phase 1, disable store methods |
+| 4 open bugs degrading user experience | MEDIUM | CONFIRMED | Fix before Lynx work |
 | No developer handover context | MEDIUM | CONFIRMED | This document + codebase analysis serves as handover |
-| 6 open bugs degrading user experience | MEDIUM | CONFIRMED | Fix before adding new features |
-| No tests found for water features | MEDIUM | HIGH | Add test coverage as part of bug fixes |
+| No tests found for water features | MEDIUM | HIGH | Add test coverage as part of bug fixes and Lynx work |
 | Connected meter vendor strategy undefined | LOW | HIGH | Defer until after Lynx pilot succeeds |
+| Agent MSI installer not ready for April rollout | MEDIUM | MEDIUM | Manual install for pilot, plan MSI for April |
 
 ---
 
-*Report generated from full codebase analysis of `core-2.0/` and `web/` directories cross-referenced against all documentation in `waterEpic/`.*
+*Report updated 2026-03-10 to align with Epic 341 (replacing Epic 253). Original gap analysis dated 2026-03-02.*
