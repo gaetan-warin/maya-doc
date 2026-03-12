@@ -201,23 +201,23 @@ All **21 water-related migrations** are present, covering:
 | Light blue "planned" dots | DONE | **REMOVE** |
 | Calendar card logic (4 colors) | TODO (#1230) | **CANCEL** — 2 colors only |
 
-### 2.3 Notification UI — Must Remove
+### 2.3 Notification UI — ~~Must Remove~~ PARTIALLY DONE
 
-**Severity: HIGH (dead code calling non-existent endpoints)**
-
-The frontend has a complete notification UI that must be **removed** per Epic 341:
+**Severity: ~~HIGH~~ MEDIUM (UI removed from dashboard, store methods still need cleanup)**
 
 | Component | Current Status | Action |
 |-----------|---------------|--------|
-| Notification list UI (past 7 days) | DONE | **REMOVE from UI** |
-| Multi-select & select all controls | DONE | **REMOVE** |
-| Bulk mark Yes/No controls | DONE | **REMOVE** |
-| Single notification expansion + input | DONE | **REMOVE** |
-| NotificationCard.vue | DONE | **REMOVE** |
-| BulkConsumptionPanel.vue | DONE | **REMOVE** |
-| FE store: `fetchIrrigationNotifications()` | DONE | **DISABLE** |
-| FE store: `updateIrrigationNotification()` | DONE | **DISABLE** |
-| FE store: `batchUpdateIrrigationNotifications()` | DONE | **DISABLE** |
+| Notification list UI (past 7 days) | ~~DONE~~ | **REMOVED from WaterTopSection** *(2026-03-12)* |
+| Multi-select & select all controls | ~~DONE~~ | **REMOVED from WaterTopSection** *(2026-03-12)* |
+| Bulk mark Yes/No controls | ~~DONE~~ | **REMOVED from WaterTopSection** *(2026-03-12)* |
+| Single notification expansion + input | ~~DONE~~ | **REMOVED from WaterTopSection** *(2026-03-12)* |
+| NotificationCard.vue | DONE | Component still exists but no longer imported/used in dashboard |
+| BulkConsumptionPanel.vue | DONE | Component still exists but no longer imported/used in dashboard |
+| FE store: `fetchIrrigationNotifications()` | DONE | **STILL NEEDS DISABLING** |
+| FE store: `updateIrrigationNotification()` | DONE | **STILL NEEDS DISABLING** |
+| FE store: `batchUpdateIrrigationNotifications()` | DONE | **STILL NEEDS DISABLING** |
+
+**Additional work completed (2026-03-12):** Full UI rework of Water Page to Volt/Tailwind design system — all CoreUI/Bootstrap/AppButton/AppDialog/scoped CSS replaced.
 
 ### 2.4 Settings — Remove Notification-Related Fields
 

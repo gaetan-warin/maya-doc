@@ -39,10 +39,10 @@ Epic 341 replaces Epic 253. Major scope changes:
 - [ ] **0.9** Verify Water Settings per outflow (allowance, period, ET factor)
 - [ ] **0.10** Verify Water Records table (Manual Readings / Connected Meter Logs tabs, filters, pagination)
 
-### Phase 1 — Remove Notification UI & Simplify Calendar *(2–3 days, Week 2)*
-- [ ] **1.1** Remove notification cards from top-left section of Water Page UI
-- [ ] **1.2** Remove inline notification expansion / confirmation flow
-- [ ] **1.3** Remove bulk mark yes/no controls
+### Phase 1 — Remove Notification UI & Simplify Calendar + UI Rework *(2–3 days, Week 2)*
+- [x] **1.1** Remove notification cards from top-left section of Water Page UI *(done 2026-03-12)*
+- [x] **1.2** Remove inline notification expansion / confirmation flow *(done 2026-03-12)*
+- [x] **1.3** Remove bulk mark yes/no controls *(done 2026-03-12)*
 - [ ] **1.4** Remove light blue "planned irrigation" dots from Days Watered calendar
 - [ ] **1.5** Simplify Days Watered calendar to 2 colors: green (irrigated) / red (no data)
 - [ ] **1.6** Remove irrigation frequency setting from Water Settings UI (keep code for future use)
@@ -50,6 +50,18 @@ Epic 341 replaces Epic 253. Major scope changes:
 - [ ] **1.8** Remove/disable FE store methods calling non-existent notification APIs (`fetchIrrigationNotifications`, `updateIrrigationNotification`, `batchUpdateIrrigationNotifications`)
 - [ ] **1.9** Implement click-to-toggle on Days Watered calendar (green ↔ red), but block toggle if connected meter or Lynx data exists for that day+outflow
 - [ ] **1.10** Fix `GET /water/graph-data` endpoint (water.js:118) — create in `WaterController` or redirect FE to existing `/water/usage`
+- [x] **1.11** Rework Water Page UI to follow standardized Volt/Tailwind design system *(done 2026-03-12)*
+  - Replaced CoreUI, Bootstrap, AppButton, AppDialog, scoped CSS/SCSS with Volt components and Tailwind
+  - Migrated all 6 dashboard cards to match dashboard card pattern (hover:scale-105, group, bi-box-arrow-up-right arrow icon)
+  - Replaced `text-gray-*` → `text-surface-*` with `dark:` variants across all cards
+  - Replaced `text-green-*` → `text-emerald-*` for brand consistency
+  - Replaced `AppDialog` → Volt `Dialog`, `AppButton` → Volt `Button`/`SecondaryButton`/`DangerButton`
+  - Replaced custom tab buttons → `MContentTabs`/`MContentTab` in WaterBottomSection
+  - Replaced `CRow`/`CCol`/`CFormSelect` → Tailwind grid + Volt `Select`/`DatePicker` in WaterSourceForm
+  - Replaced Bootstrap `spinner-border` → `MayaLoader`, `form-check-input` → Volt `Checkbox` in NotificationCard
+  - Replaced raw inputs/buttons → Volt equivalents in BulkConsumptionPanel
+  - Removed all scoped CSS/SCSS from water components
+  - Added `CardLoadingSkeleton` shared component for consistent loading states
 
 ### Phase 2 — Verify Connected Meters *(3–4 days, Weeks 2–3)*
 - [ ] **2.1** Verify Shayp/Masgrau data loads correctly on Water Page
@@ -132,17 +144,27 @@ Per Epic 341 acceptance criteria — verify each card, modal, setting, and table
 
 ---
 
-## Phase 1 — Remove Notification UI & Simplify Calendar
+## Phase 1 — Remove Notification UI & Simplify Calendar + UI Rework
 
-**Goal:** Strip out cancelled features. Simplify Days Watered to 2-color system.
+**Goal:** Strip out cancelled features. Simplify Days Watered to 2-color system. Migrate UI to Volt/Tailwind design system.
 
 ### What to remove from UI
-- Top left section: daily irrigation notification cards ("Did you irrigate yesterday?")
-- Inline notification expansion / confirmation flow
-- Bulk mark yes/no controls
+- ~~Top left section: daily irrigation notification cards ("Did you irrigate yesterday?")~~ **DONE 2026-03-12**
+- ~~Inline notification expansion / confirmation flow~~ **DONE 2026-03-12**
+- ~~Bulk mark yes/no controls~~ **DONE 2026-03-12**
 - Light blue "planned irrigation" dots from Days Watered calendar
 - Irrigation frequency setting from Water Settings (keep in codebase)
 - Mobile notification settings
+
+### UI Rework (DONE 2026-03-12)
+Full migration of Water Page to standardized Volt/Tailwind design system:
+- Removed NotificationCard from WaterTopSection, simplified grid to `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
+- All 6 dashboard cards now match dashboard pattern (group hover, scale, arrow icon for clickable cards)
+- All colors migrated: `text-gray-*` → `text-surface-*`, `text-green-*` → `text-emerald-*`, `bg-gray-*` → `bg-surface-*`
+- All CoreUI/Bootstrap components replaced with Volt equivalents (Dialog, Button, Select, Checkbox, etc.)
+- Bottom section tabs migrated to `MContentTabs`/`MContentTab`
+- All scoped CSS/SCSS removed, using Tailwind utilities only
+- Files modified: water.vue, WaterTopSection, WaterBottomSection, WaterHeaderSection, WaterInsightCard, WaterReadingsTable, WaterSourceForm, WaterModalContainer, NotificationCard, BulkConsumptionPanel, ETCard, RainfallCard, WaterUsageCard, DaysWateredCard, SiteConditionsCard, WaterBudgetCard, CardLoadingSkeleton
 
 ### What to remove/disable in backend
 - Don't build: notification scheduler, notification APIs, suggested value service, min/max range service, daily irrigation logs table
