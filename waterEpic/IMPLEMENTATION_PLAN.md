@@ -28,10 +28,10 @@ Epic 341 replaces Epic 253. Major scope changes:
 - [x] **D6** Calendar colors → **2 colors only** — green (irrigated) / red (no data). No light blue "planned" dots.
 
 ### Phase 0 — Verify & Fix Existing Water Page *(4–5 days, Week 1)*
-- [ ] **0.1** Fix bug #2254 — Cannot delete water records
-- [ ] **0.2** Fix bug #2258 — Cannot update water records
-- [ ] **0.3** Fix bug #2263 — Previous reading value wrong in message
-- [ ] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated
+- [x] **0.1** Fix bug #2254 — Cannot delete water records
+- [x] **0.2** Fix bug #2258 — Cannot update water records
+- [x] **0.3** Fix bug #2263 — Previous reading value wrong in message (fixed `getPreviousWaterReading()` in `WaterReadingRepository.php`)
+- [x] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated (downstream fix from #2263)
 - [ ] **0.5** Close #2259 as "won't fix" — notification-related, feature cancelled
 - [ ] **0.6** Close #2268 as "won't fix" — notification system cancelled
 - [ ] **0.7** Verify 6 insight cards render correctly with proper trend indicators and colors

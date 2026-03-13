@@ -143,7 +143,7 @@ Each pumping group gets its own water source:
 
 | Field | PG1 (Nord) | PG2 (Centre) | PG3 (Sud) |
 |-------|-----------|-------------|-----------|
-| `tenant_id` | `8ceeada6-cac0-4203-8454-f33d10a0381f` | same | same |
+| `tenant_id` | `69601c19-1f91-476e-9e71-f6da047a64c0` | same | same |
 | `name` | Masgrau PG1 - Nord | Masgrau PG2 - Centre | Masgrau PG3 - Sud |
 | `source_type` | `outflow` | `outflow` | `outflow` |
 | `measurement_type` | `daily_consumption` | `daily_consumption` | `daily_consumption` |
@@ -156,7 +156,7 @@ Each pumping group gets its own water source:
 | Field | PG1 (Nord) | PG2 (Centre) | PG3 (Sud) |
 |-------|-----------|-------------|-----------|
 | `device_reference_id` | `masgrau-infinitum-pg1` | `masgrau-infinitum-pg2` | `masgrau-infinitum-pg3` |
-| `tenant_id` | `8ceeada6-cac0-4203-8454-f33d10a0381f` | same | same |
+| `tenant_id` | `69601c19-1f91-476e-9e71-f6da047a64c0` | same | same |
 | `water_source_id` | FK → PG1 water source | FK → PG2 water source | FK → PG3 water source |
 | `status` | 1 (active) | 1 (active) | 1 (active) |
 
@@ -254,7 +254,7 @@ To m3:  380 / 1000 = 0.38 m3
 
 | # | Question | Owner | Status |
 |---|----------|-------|--------|
-| 1 | What is the Infinitum Living `tenant_id` UUID? | Backend/DB | **Resolved: `8ceeada6-cac0-4203-8454-f33d10a0381f`** |
+| 1 | What is the Infinitum Living `tenant_id` UUID? | Backend/DB | **Resolved: `69601c19-1f91-476e-9e71-f6da047a64c0`** |
 | 2 | Should each PG be a separate water source, or all 3 feed into one source? | Product | **Decided: 3 separate** |
 | 3 | Are the 3 PGs inflows or outflows? | Product | **Decided: Outflows** — Shayp is configured as outflow in both prod ("Arrosage") and dev ("Shayp Outlet"). Masgrau pumps measure irrigation water volume, same concept → outflows. |
 | 4 | Confirm unit: raw 32-bit ÷ 1,000,000 = m3? | ETL/Masgrau vendor | **Confirmed** — per Notion doc: "The values should be in Millions, which gives the water meter reading" |
