@@ -135,7 +135,8 @@ ORDER BY wsc.created_at DESC;
 
 Open the Water Dashboard for Infinitum Living and confirm Masgrau data appears in both daily and hourly views.
 
-- [ ] Done
+- [x] API verified (local Docker — 2026-03-13) — 69 connected meter readings returned (3 Masgrau + 66 Shayp). Bug fixed: aggregation was not setting `is_connected_device_record=true`, so "Connected Meter Logs" tab was empty. Fixed in `ConnectedWaterMeterDailyAggregationService` + backfilled 69 existing records.
+- [ ] Visual check in browser (pending)
 
 ---
 

@@ -333,7 +333,7 @@ Note: For Masgrau this is cumulative m3. For Shayp this is hourly delta m3. The 
 | **9** | Test: POST with `device_reference_id` to Water API | Manual test | [x] 201 for all 3 PGs (local Docker) |
 | **10** | Test: hourly data appears in `connected_water_meter_hourly_records` | Manual test | [x] 3 records confirmed in DB |
 | **11** | Test: daily aggregation computes correct delta | Manual test | [x] 3 water_readings + 3 site_consumption created (local Docker, --force). Fixed bug: `$measurementType->value` → `$measurementType` |
-| **12** | Test: data appears on Water Dashboard | Manual test | [ ] |
+| **12** | Test: data appears on Water Dashboard | Manual test | [x] API returns 69 connected meter readings. Fixed bug: `is_connected_device_record` not set by aggregation service |
 
 ---
 
