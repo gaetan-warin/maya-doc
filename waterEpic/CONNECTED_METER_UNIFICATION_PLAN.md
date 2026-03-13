@@ -323,13 +323,13 @@ Note: For Masgrau this is cumulative m3. For Shayp this is hourly delta m3. The 
 | Step | What | Where | Status |
 |------|------|-------|--------|
 | **1** | Get Infinitum Living `site_id` from DB | DB query | [x] `37dcd69b-b9c9-478c-92b2-9680a81ebcf0` |
-| **2** | Add `meter_reading` support to aggregation service | `core-2.0` | [x] `ConnectedWaterMeterDailyAggregationService` updated |
+| **2** | Add `meter_reading` support to aggregation service | `core-2.0` | [x] `ConnectedWaterMeterDailyAggregationService` updated + 2 bugfixes (`$measurementType->value`, `is_connected_device_record`) |
 | **3** | Create migration: 3 water sources + 3 devices + 3 site associations | `core-2.0` | [x] Migration created & ran on dev |
 | **4** | Add `device_reference_id` support to Water API | `core-2.0` | [x] Request, service, repository updated |
 | **5** | Simplify `masgrau.py`: stateless, POST cumulative via `device_reference_id` | `maya-etl` | [x] Rewritten |
 | **6** | Create shared `lib/water.py` (POST to Water API) | `maya-etl` | [x] Extracted from shayp.py |
 | **7** | Update `shayp.py` to use `device_reference_id` + shared `lib/water.py` | `maya-etl` | [x] Updated |
-| **8** | Update cron schedule from 5min to 60min | NiFi or cron | [ ] |
+| **8** | Update cron schedule from 5min to 60min | ETL server cron | [ ] Deployment-time task |
 | **9** | Test: POST with `device_reference_id` to Water API | Manual test | [x] 201 for all 3 PGs (local Docker) |
 | **10** | Test: hourly data appears in `connected_water_meter_hourly_records` | Manual test | [x] 3 records confirmed in DB |
 | **11** | Test: daily aggregation computes correct delta | Manual test | [x] 3 water_readings + 3 site_consumption created (local Docker, --force). Fixed bug: `$measurementType->value` → `$measurementType` |

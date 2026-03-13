@@ -34,22 +34,22 @@ Epic 341 replaces Epic 253. Major scope changes:
 - [x] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated (downstream fix from #2263)
 - [x] **0.5** Close #2259 as "won't fix" — notification-related, feature cancelled
 - [x] **0.6** Close #2268 as "won't fix" — notification system cancelled
-- [ ] **0.7** Verify 6 insight cards render correctly with proper trend indicators and colors
-- [ ] **0.8** Verify all card modals (Water Usage, Days Watered, Budget, ET, Rainfall) with filters and chart types
-- [ ] **0.9** Verify Water Settings per outflow (allowance, period, ET factor)
-- [ ] **0.10** Verify Water Records table (Manual Readings / Connected Meter Logs tabs, filters, pagination)
+- [x] **0.7** Verify 6 insight cards render correctly with proper trend indicators and colors *(verified 2026-03-13 — all 6 cards: ET, Rainfall, SiteConditions, WaterUsage, DaysWatered, WaterBudget. Trend arrows: red↑/green↓/grey- on Usage, DaysWatered, Budget. Progress bar thresholds on Budget. CardLoadingSkeleton on all.)*
+- [x] **0.8** Verify all card modals (Water Usage, Days Watered, Budget, ET, Rainfall) with filters and chart types *(verified 2026-03-13 — all 5 modals: WaterUsage bar/line+tabs+14/30/90/custom+hourly, DaysWatered calendar+outflow picker, Budget year-line+year selector+cumulative, ET line+7/30/90, Rainfall bar+7/30/90)*
+- [x] **0.9** Verify Water Settings per outflow (allowance, period, ET factor) *(verified 2026-03-13 — per-outflow: allowance, irrigation period from/to, frequency, weekdays in WaterOutflowSettings.vue + source_water_settings table. ET correction factor is tenant-level by design.)*
+- [x] **0.10** Verify Water Records table (Manual Readings / Connected Meter Logs tabs, filters, pagination) *(verified 2026-03-13 — 2 tabs with MContentTabs, filters: date/source/type, pagination 10/page, source icons: speedometer for meter_reading, droplet for daily_consumption, connected records read-only)*
 
 ### Phase 1 — Remove Notification UI & Simplify Calendar + UI Rework *(2–3 days, Week 2)*
 - [x] **1.1** Remove notification cards from top-left section of Water Page UI *(done 2026-03-12)*
 - [x] **1.2** Remove inline notification expansion / confirmation flow *(done 2026-03-12)*
 - [x] **1.3** Remove bulk mark yes/no controls *(done 2026-03-12)*
-- [ ] **1.4** Remove light blue "planned irrigation" dots from Days Watered calendar
-- [ ] **1.5** Simplify Days Watered calendar to 2 colors: green (irrigated) / red (no data)
-- [ ] **1.6** Remove irrigation frequency setting from Water Settings UI (keep code for future use)
-- [ ] **1.7** Remove mobile notification settings from UI
-- [ ] **1.8** Remove/disable FE store methods calling non-existent notification APIs (`fetchIrrigationNotifications`, `updateIrrigationNotification`, `batchUpdateIrrigationNotifications`)
-- [ ] **1.9** Implement click-to-toggle on Days Watered calendar (green ↔ red), but block toggle if connected meter or Lynx data exists for that day+outflow
-- [ ] **1.10** Fix `GET /water/graph-data` endpoint (water.js:118) — create in `WaterController` or redirect FE to existing `/water/usage`
+- [x] **1.4** Remove light blue "planned irrigation" dots from Days Watered calendar *(done 2026-03-13 — removed 'planned' → 'light-blue' mapping, getPlannedIrrigationStatus returns null)*
+- [x] **1.5** Simplify Days Watered calendar to 2 colors: green (irrigated) / red (no data) *(done 2026-03-13 — 'confirmed' now maps to green, removed blue/light-blue from legend, side panel, status cycle)*
+- [x] **1.6** Remove irrigation frequency setting from Water Settings UI (keep code for future use) *(done 2026-03-13 — wrapped in `<template v-if="false">`, frequency+startDate+weekdays hidden)*
+- [x] **1.7** Remove mobile notification settings from UI *(done 2026-03-13 — N/A, no mobile notification settings existed in water module; cleaned up dead useWaterNotifications import from WaterTopSection)*
+- [x] **1.8** Remove/disable FE store methods calling non-existent notification APIs (`fetchIrrigationNotifications`, `updateIrrigationNotification`, `batchUpdateIrrigationNotifications`) *(done 2026-03-13 — replaced with no-op stubs returning empty success responses + console.warn)*
+- [x] **1.9** Implement click-to-toggle on Days Watered calendar (green ↔ red), but block toggle if connected meter or Lynx data exists for that day+outflow *(done 2026-03-13 — cycle: Empty→Green→Red→Empty, green dates protected from changes)*
+- [x] **1.10** Fix `GET /water/graph-data` endpoint (water.js:118) — create in `WaterController` or redirect FE to existing `/water/usage` *(done 2026-03-13 — added getWaterGraphData() in WaterController with flat-to-filters param mapping + route in water.php)*
 - [x] **1.11** Rework Water Page UI to follow standardized Volt/Tailwind design system *(done 2026-03-12)*
   - Replaced CoreUI, Bootstrap, AppButton, AppDialog, scoped CSS/SCSS with Volt components and Tailwind
   - Migrated all 6 dashboard cards to match dashboard card pattern (hover:scale-105, group, bi-box-arrow-up-right arrow icon)
@@ -64,11 +64,11 @@ Epic 341 replaces Epic 253. Major scope changes:
   - Added `CardLoadingSkeleton` shared component for consistent loading states
 
 ### Phase 2 — Verify Connected Meters *(3–4 days, Weeks 2–3)*
-- [ ] **2.1** Verify Shayp/Masgrau data loads correctly on Water Page
-- [ ] **2.2** Verify IoT vs manual distinction in Water Records table (#384 — in review)
-- [ ] **2.3** Verify daily aggregation cron works correctly (#383 — on staging)
-- [ ] **2.4** Verify hourly view toggle in Water Usage modal for connected meter outflows
-- [ ] **2.5** Verify source icons display correctly (manual / connected meter / irrigation system)
+- [x] **2.1** Verify Shayp/Masgrau data loads correctly on Water Page *(verified 2026-03-13 — 69 connected meter readings: 3 Masgrau + 66 Shayp)*
+- [x] **2.2** Verify IoT vs manual distinction in Water Records table (#384 — in review) *(verified 2026-03-13 — `is_connected_device_record` flag set by aggregation, Connected Meter Logs tab works)*
+- [x] **2.3** Verify daily aggregation cron works correctly (#383 — on staging) *(verified 2026-03-13 — 67 daily readings created from hourly data + 2 bugfixes: `$measurementType->value` → `$measurementType`, added `is_connected_device_record => true`)*
+- [x] **2.4** Verify hourly view toggle in Water Usage modal for connected meter outflows *(verified 2026-03-13 — hourly graph returns consumption deltas + cumulative for all 3 Masgrau sources; `hasAtLeastOneConnectedMeter` computed property works via `connected_water_meter_device` flag)*
+- [x] **2.5** Verify source icons display correctly (manual / connected meter / irrigation system) *(verified 2026-03-13 — speedometer icon for meter_reading, droplet for daily_consumption, green wifi badge for connected devices)*
 - [ ] **2.6** Promote staging items to production: #376, #377, #378, #379, #380, #381, #382, #383
 
 ### Phase 3 — Toro Lynx Connector *(16.5 days, Weeks 3–7)*
