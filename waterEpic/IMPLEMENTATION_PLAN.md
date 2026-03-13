@@ -32,8 +32,8 @@ Epic 341 replaces Epic 253. Major scope changes:
 - [x] **0.2** Fix bug #2258 — Cannot update water records
 - [x] **0.3** Fix bug #2263 — Previous reading value wrong in message (fixed `getPreviousWaterReading()` in `WaterReadingRepository.php`)
 - [x] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated (downstream fix from #2263)
-- [ ] **0.5** Close #2259 as "won't fix" — notification-related, feature cancelled
-- [ ] **0.6** Close #2268 as "won't fix" — notification system cancelled
+- [x] **0.5** Close #2259 as "won't fix" — notification-related, feature cancelled
+- [x] **0.6** Close #2268 as "won't fix" — notification system cancelled
 - [ ] **0.7** Verify 6 insight cards render correctly with proper trend indicators and colors
 - [ ] **0.8** Verify all card modals (Water Usage, Days Watered, Budget, ET, Rainfall) with filters and chart types
 - [ ] **0.9** Verify Water Settings per outflow (allowance, period, ET factor)
