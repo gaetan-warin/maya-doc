@@ -59,6 +59,23 @@ Change Masgrau ETL schedule from every 5 minutes to **every 60 minutes** (at :05
 
 ---
 
+### 2b. Scheduled commands — DevOps action required
+
+Two artisan commands are declared in `routes/console.php` and must be running in production. **DevOps is responsible for ensuring the Laravel scheduler is running on the server.** Dev team owns the schedule declaration only.
+
+**Commands declared in `routes/console.php`:**
+
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| `water:aggregate-connected-daily-readings` | Hourly | Converts `connected_water_meter_hourly_records` → daily `water_readings` (Masgrau + Shayp) |
+| `water:promote-lynx-daily-readings` *(to be added)* | Daily at 06:30 | Promotes `lynx_water_records` → `water_readings` (Lynx) |
+
+**For DevOps:** ensure `php artisan schedule:run` is triggered every minute on the production server (standard Laravel cron entry), or that `php artisan schedule:work` is running as a persistent process.
+
+- [ ] DevOps confirmed scheduler is running in production
+
+---
+
 ### 3. Test: POST with device_reference_id to Water API
 
 Send a test POST to verify the backend resolves `device_reference_id` correctly:
@@ -149,6 +166,7 @@ Track every production change here in chronological order.
 |------|--------|-----|--------|----------|
 | | Migration: seed Masgrau water sources + devices + site associations | | | `php artisan migrate:rollback --path=...seed_masgrau...` |
 | | Cron: Masgrau schedule 5min → 60min | | | Revert cron entry |
+| | DevOps: Laravel scheduler running in production (`schedule:run` cron or `schedule:work`) | | | N/A |
 | | Deploy: aggregation service `meter_reading` support | | | Redeploy previous version |
 | | Deploy: Water API `device_reference_id` resolution | | | Redeploy previous version |
 | | Deploy: masgrau.py stateless rewrite | | | Redeploy previous version |
