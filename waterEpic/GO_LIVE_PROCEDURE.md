@@ -68,7 +68,8 @@ Two artisan commands are declared in `routes/console.php` and must be running in
 | Command | Schedule | Purpose |
 |---------|----------|---------|
 | `water:aggregate-connected-daily-readings` | Hourly | Converts `connected_water_meter_hourly_records` → daily `water_readings` (Masgrau + Shayp) |
-| `water:promote-lynx-daily-readings` *(to be added)* | Daily at 06:30 | Promotes `lynx_water_records` → `water_readings` (Lynx) |
+| `water:promote-lynx-daily-readings` | Daily at 06:30 | Promotes `lynx_water_records` → `water_readings` (Lynx) |
+| `lynx:check-sync-health` | Daily at 08:00 | Flags clubs with no sync in >26h → Slack alert |
 
 **For DevOps:** ensure `php artisan schedule:run` is triggered every minute on the production server (standard Laravel cron entry), or that `php artisan schedule:work` is running as a persistent process.
 
@@ -172,6 +173,12 @@ Track every production change here in chronological order.
 | | Deploy: masgrau.py stateless rewrite | | | Redeploy previous version |
 | | Deploy: shayp.py `device_reference_id` update | | | Redeploy previous version |
 | | Deploy: `lib/water.py` shared module | | | Redeploy previous version |
+| | Migration: Lynx tables (`lynx_club_configs`, `lynx_water_records`, `lynx_sync_logs`, `is_lynx_record` column, `site_id` on club configs) | | | Rollback 5 migrations |
+| | Deploy: Lynx backend (ingest endpoint, promotion service, health monitoring) | | | Redeploy previous version |
+| | Deploy: Back office (connected device form + Lynx club config form) | | | Redeploy previous version |
+| | Deploy: Water Page Lynx display (frontend) | | | Redeploy previous version |
+| | Config: Slack webhook URL for `services.slack.lynx_webhook_url` | | | N/A |
+| | Lynx agent: installed on Adare Manor Windows machine + Task Scheduler configured | | | Remove scheduled task |
 
 ---
 

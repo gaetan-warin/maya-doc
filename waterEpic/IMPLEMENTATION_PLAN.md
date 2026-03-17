@@ -1,389 +1,561 @@
-# Water Epic — Implementation Plan
+# Water Epic 341 — Implementation Plan
 
-**Date:** 2026-03-10 (updated) | **~30–33 dev days / ~7 weeks** (1 dev) | **~5 weeks** (2 devs)
-**Ref:** `GAP_ANALYSIS_REPORT.md`, Epic 341 (GitLab) | **Critical path:** Phase 0 → 1 → 3 → 4
-
----
-
-## Scope Change (March 2026)
-
-Epic 341 replaces Epic 253. Major scope changes:
-- **CANCELLED:** Irrigation notifications & planning (entire module)
-- **CANCELLED:** Mobile push notifications & mobile APIs
-- **CANCELLED:** 4-color calendar (simplified to 2 colors: green/red)
-- **CANCELLED:** Notification-related settings (frequency, mobile toggle, reminder time)
-- **ADDED:** Toro Lynx integration as primary deliverable
-- **Target:** Prod release end of March 2026
+**Last updated:** 2026-03-17 | **Target:** Prod release end of March 2026
+**Ref:** Epic 341 (GitLab), `LYNX_COMPLETE_REFERENCE.md`, `GO_LIVE_PROCEDURE.md`
 
 ---
 
-## Already Verified in Code (Do Not Rebuild)
+## Scope
 
-### Decisions (before starting)
-- [x] **D1** Lynx data model → **own `lynx_*` tables (decided)** — different granularity (daily/zone vs hourly/device), needs auto/manual volume split + sync audit trail. Both feed into `water_readings` for dashboard.
-- [x] **D2** Lynx agent repo → **separate `maya-lynx-agent` (decided)** — deployed as a self-contained installer (`.exe` via PyInstaller) on customer's Windows machine at the golf club. Zero shared code with Laravel/Vue.
-- [x] **D3** Adare Manor backfill depth → **configurable per club (decided)** — agent `--backfill --months N` flag pulls N months of history from Lynx `water_use` table, tagged as `data_source = 'backfill'`. Default 12 months.
-- [x] **D4** Notifications → **CANCELLED** — Lynx replaces irrigation planning. No notification system needed.
-- [x] **D5** Mobile push → **CANCELLED** — cancelled with notifications.
-- [x] **D6** Calendar colors → **2 colors only** — green (irrigated) / red (no data). No light blue "planned" dots.
+| | |
+|-|-|
+| **CANCELLED** | Irrigation notifications & planning, mobile push, 4-color calendar, notification settings |
+| **ADDED** | Toro Lynx integration (primary deliverable) |
+| **ADDED** | Back office forms for all water integrations (replaces manual seed migrations) |
 
-### Phase 0 — Verify & Fix Existing Water Page *(4–5 days, Week 1)*
+---
+
+## Architecture Decisions (locked)
+
+| # | Decision |
+|---|----------|
+| D1 | Lynx uses own `lynx_*` tables (daily/zone granularity vs hourly/device). Both feed `water_readings`. |
+| D2 | Lynx agent is a separate repo `maya-lynx-agent`, deployed as `.exe` on customer Windows machine. |
+| D3 | Backfill depth configurable per club via `--backfill --months N` flag. Default 12 months. |
+| D4 | Connected meter devices (Masgrau/Shayp) managed via back office form — no more seed migrations. |
+| D5 | `LynxDailyPromotionService` promotes `lynx_water_records` → `water_readings` (separate from ingest). |
+| D6 | Laravel scheduler (`routes/console.php`) owns schedule declarations. DevOps owns running it. |
+| D7 | Notifications cancelled. Lynx replaces irrigation planning. Calendar: 2 colors only (green/red). |
+| D8 | Lynx zones are **always outflows** (`source_type = 'outflow'` hardcoded). No back office field for it. Masgrau/Shayp can be inflow or outflow — configurable. |
+| D9 | Lynx record detection in Water Page via `is_lynx_record` boolean on `water_readings` — consistent with existing `is_connected_device_record` pattern. One migration to add the column. |
+| D10 | `measurement_type` is not configurable in back office — derived from integration type. Masgrau → always `meter_reading` (Modbus cumulative registers). Shayp → always `daily_consumption` (API hourly deltas). Admin picks integration type; system hardcodes the rest. |
+
+---
+
+## Scheduled Commands (DevOps must confirm all three are running)
+
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| `water:aggregate-connected-daily-readings` | Hourly | `connected_water_meter_hourly_records` → `water_readings` (Masgrau + Shayp) |
+| `water:promote-lynx-daily-readings` | Daily 06:30 | `lynx_water_records` → `water_readings` (Lynx) |
+| `lynx:check-sync-health` | Daily 08:00 | Flag clubs with no sync in >26h → Slack alert |
+
+All declared in `routes/console.php`. DevOps to ensure `php artisan schedule:run` runs every minute in production.
+
+---
+
+## Delivery Timeline
+
+```
+Week 1   Phase 0: Bug fixes + verify existing Water Page (DONE)
+Week 2   Phase 1: Remove notifications + simplify calendar + UI rework (DONE)
+         Phase 2: Verify connected meters (mostly DONE — staging → prod pending)
+Week 3   ← NOW → Phase 3.A: Back office forms | Phase 3.B: Lynx backend
+Week 4   Phase 3.C: Water Page Lynx display | Phase 3.D: Health monitoring
+         Phase 3.E: Python agent DB layer + reconciliation (parallel)
+Week 5   Phase 3.E: Python agent push + CLI + package (parallel)
+Week 6   Phase 3.F: E2E integration test + Adare Manor pilot
+Week 7   Phase 4: QA, acceptance criteria, regression
+```
+
+---
+
+## Phase 0 — Verify & Fix Existing Water Page ✅ DONE
+
 - [x] **0.1** Fix bug #2254 — Cannot delete water records
 - [x] **0.2** Fix bug #2258 — Cannot update water records
-- [x] **0.3** Fix bug #2263 — Previous reading value wrong in message (fixed `getPreviousWaterReading()` in `WaterReadingRepository.php`)
-- [x] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated (downstream fix from #2263)
+- [x] **0.3** Fix bug #2263 — Previous reading value wrong (`getPreviousWaterReading()` fixed)
+- [x] **0.4** Fix bug #2283 — Calendar total consumption wrongly updated (downstream of #2263)
 - [x] **0.5** Close #2259 as "won't fix" — notification-related, feature cancelled
 - [x] **0.6** Close #2268 as "won't fix" — notification system cancelled
-- [x] **0.7** Verify 6 insight cards render correctly with proper trend indicators and colors *(verified 2026-03-13 — all 6 cards: ET, Rainfall, SiteConditions, WaterUsage, DaysWatered, WaterBudget. Trend arrows: red↑/green↓/grey- on Usage, DaysWatered, Budget. Progress bar thresholds on Budget. CardLoadingSkeleton on all.)*
-- [x] **0.8** Verify all card modals (Water Usage, Days Watered, Budget, ET, Rainfall) with filters and chart types *(verified 2026-03-13 — all 5 modals: WaterUsage bar/line+tabs+14/30/90/custom+hourly, DaysWatered calendar+outflow picker, Budget year-line+year selector+cumulative, ET line+7/30/90, Rainfall bar+7/30/90)*
-- [x] **0.9** Verify Water Settings per outflow (allowance, period, ET factor) *(verified 2026-03-13 — per-outflow: allowance, irrigation period from/to, frequency, weekdays in WaterOutflowSettings.vue + source_water_settings table. ET correction factor is tenant-level by design.)*
-- [x] **0.10** Verify Water Records table (Manual Readings / Connected Meter Logs tabs, filters, pagination) *(verified 2026-03-13 — 2 tabs with MContentTabs, filters: date/source/type, pagination 10/page, source icons: speedometer for meter_reading, droplet for daily_consumption, connected records read-only)*
+- [x] **0.7** Verify 6 insight cards — ET, Rainfall, SiteConditions, WaterUsage, DaysWatered, WaterBudget *(2026-03-13)*
+- [x] **0.8** Verify all 5 card modals with filters and chart types *(2026-03-13)*
+- [x] **0.9** Verify Water Settings per outflow — allowance, irrigation period, ET factor *(2026-03-13)*
+- [x] **0.10** Verify Water Records table — tabs, filters, pagination, source icons *(2026-03-13)*
 
-### Phase 1 — Remove Notification UI & Simplify Calendar + UI Rework *(2–3 days, Week 2)*
-- [x] **1.1** Remove notification cards from top-left section of Water Page UI *(done 2026-03-12)*
-- [x] **1.2** Remove inline notification expansion / confirmation flow *(done 2026-03-12)*
-- [x] **1.3** Remove bulk mark yes/no controls *(done 2026-03-12)*
-- [x] **1.4** Remove light blue "planned irrigation" dots from Days Watered calendar *(done 2026-03-13 — removed 'planned' → 'light-blue' mapping, getPlannedIrrigationStatus returns null)*
-- [x] **1.5** Simplify Days Watered calendar to 2 colors: green (irrigated) / red (no data) *(done 2026-03-13 — 'confirmed' now maps to green, removed blue/light-blue from legend, side panel, status cycle)*
-- [x] **1.6** Remove irrigation frequency setting from Water Settings UI (keep code for future use) *(done 2026-03-13 — wrapped in `<template v-if="false">`, frequency+startDate+weekdays hidden)*
-- [x] **1.7** Remove mobile notification settings from UI *(done 2026-03-13 — N/A, no mobile notification settings existed in water module; cleaned up dead useWaterNotifications import from WaterTopSection)*
-- [x] **1.8** Remove/disable FE store methods calling non-existent notification APIs (`fetchIrrigationNotifications`, `updateIrrigationNotification`, `batchUpdateIrrigationNotifications`) *(done 2026-03-13 — replaced with no-op stubs returning empty success responses + console.warn)*
-- [x] **1.9** Implement click-to-toggle on Days Watered calendar (green ↔ red), but block toggle if connected meter or Lynx data exists for that day+outflow *(done 2026-03-13 — cycle: Empty→Green→Red→Empty, green dates protected from changes)*
-- [x] **1.10** Fix `GET /water/graph-data` endpoint (water.js:118) — create in `WaterController` or redirect FE to existing `/water/usage` *(done 2026-03-13 — added getWaterGraphData() in WaterController with flat-to-filters param mapping + route in water.php)*
-- [x] **1.11** Rework Water Page UI to follow standardized Volt/Tailwind design system *(done 2026-03-12)*
-  - Replaced CoreUI, Bootstrap, AppButton, AppDialog, scoped CSS/SCSS with Volt components and Tailwind
-  - Migrated all 6 dashboard cards to match dashboard card pattern (hover:scale-105, group, bi-box-arrow-up-right arrow icon)
-  - Replaced `text-gray-*` → `text-surface-*` with `dark:` variants across all cards
-  - Replaced `text-green-*` → `text-emerald-*` for brand consistency
-  - Replaced `AppDialog` → Volt `Dialog`, `AppButton` → Volt `Button`/`SecondaryButton`/`DangerButton`
-  - Replaced custom tab buttons → `MContentTabs`/`MContentTab` in WaterBottomSection
-  - Replaced `CRow`/`CCol`/`CFormSelect` → Tailwind grid + Volt `Select`/`DatePicker` in WaterSourceForm
-  - Replaced Bootstrap `spinner-border` → `MayaLoader`, `form-check-input` → Volt `Checkbox` in NotificationCard
-  - Replaced raw inputs/buttons → Volt equivalents in BulkConsumptionPanel
-  - Removed all scoped CSS/SCSS from water components
-  - Added `CardLoadingSkeleton` shared component for consistent loading states
+---
 
-### Phase 2 — Verify Connected Meters *(3–4 days, Weeks 2–3)*
-- [x] **2.1** Verify Shayp/Masgrau data loads correctly on Water Page *(verified 2026-03-13 — 69 connected meter readings: 3 Masgrau + 66 Shayp)*
-- [x] **2.2** Verify IoT vs manual distinction in Water Records table (#384 — in review) *(verified 2026-03-13 — `is_connected_device_record` flag set by aggregation, Connected Meter Logs tab works)*
-- [x] **2.3** Verify daily aggregation cron works correctly (#383 — on staging) *(verified 2026-03-13 — 67 daily readings created from hourly data + 2 bugfixes: `$measurementType->value` → `$measurementType`, added `is_connected_device_record => true`)*
-- [x] **2.4** Verify hourly view toggle in Water Usage modal for connected meter outflows *(verified 2026-03-13 — hourly graph returns consumption deltas + cumulative for all 3 Masgrau sources; `hasAtLeastOneConnectedMeter` computed property works via `connected_water_meter_device` flag)*
-- [x] **2.5** Verify source icons display correctly (manual / connected meter / irrigation system) *(verified 2026-03-13 — speedometer icon for meter_reading, droplet for daily_consumption, green wifi badge for connected devices)*
+## Phase 1 — Remove Notifications + Simplify Calendar + UI Rework ✅ DONE
+
+- [x] **1.1** Remove notification cards from Water Page top-left *(2026-03-12)*
+- [x] **1.2** Remove inline notification expansion / confirmation flow *(2026-03-12)*
+- [x] **1.3** Remove bulk mark yes/no controls *(2026-03-12)*
+- [x] **1.4** Remove light blue "planned irrigation" dots from calendar *(2026-03-13)*
+- [x] **1.5** Simplify calendar to 2 colors: green (irrigated) / red (no data) *(2026-03-13)*
+- [x] **1.6** Hide irrigation frequency setting in Water Settings UI (keep code) *(2026-03-13)*
+- [x] **1.7** Remove mobile notification settings — N/A, didn't exist *(2026-03-13)*
+- [x] **1.8** Disable FE store methods calling non-existent notification APIs (no-op stubs) *(2026-03-13)*
+- [x] **1.9** Implement 2-color calendar click-to-toggle — block toggle if connected meter or Lynx data exists *(2026-03-13)*
+- [x] **1.10** Fix `GET /water/graph-data` endpoint — added `getWaterGraphData()` in WaterController *(2026-03-13)*
+- [x] **1.11** Full UI rework to Volt/Tailwind design system *(2026-03-12)*
+
+---
+
+## Phase 2 — Verify Connected Meters (Shayp / Masgrau)
+
+- [x] **2.1** Verify Shayp/Masgrau data loads on Water Page — 69 readings confirmed *(2026-03-13)*
+- [x] **2.2** Verify IoT vs manual distinction in Water Records table *(2026-03-13)*
+- [x] **2.3** Verify daily aggregation cron works — 67 readings created, 2 bugs fixed *(2026-03-13)*
+- [x] **2.4** Verify hourly view toggle in Water Usage modal for connected meter outflows *(2026-03-13)*
+- [x] **2.5** Verify source icons — speedometer (meter_reading), droplet (daily_consumption), wifi badge *(2026-03-13)*
 - [ ] **2.6** Promote staging items to production: #376, #377, #378, #379, #380, #381, #382, #383
 
-### Phase 3 — Toro Lynx Connector *(16.5 days, Weeks 3–7)*
-- [ ] **3.A1** Define API contract + create DB migrations (1d)
-- [ ] **3.A2** Build club config + API key management (1.5d)
-- [ ] **3.A3** Build ingest API endpoint `POST /api/v2/lynx/sync` (1.5d)
-- [ ] **3.A4** Build health monitoring — minimal MVP for CS team (1.5d)
-- [ ] **3.A5** Wire Lynx data into Water Page dashboard (1.5d)
-- [ ] **3.B1** Python: Lynx DB query layer via pyodbc (1.5d) *(parallel with A)*
-- [ ] **3.B2** Python: Reconciliation engine (2d)
-- [ ] **3.B3** Python: HTTPS push to Maya API (1d)
-- [ ] **3.B4** Python: CLI + scheduling + logging (1d)
-- [ ] **3.B5** Python: PyInstaller Windows package (1d)
-- [ ] **3.C1** End-to-end integration test (1.5d)
-- [ ] **3.C2** Adare Manor pilot deployment (1.5d)
+---
 
-### Phase 4 — QA & Hardening *(4 days, Weeks 7–8)*
-- [ ] **4.1** Execute GitLab test cases: #1192 (Water 2.0 general), #1193 (settings), #1224 (calendar behavior)
-- [ ] **4.2** Verify acceptance criteria from Epic 341
-- [ ] **4.3** Full regression: source CRUD, reading CRUD (manual + connected + Lynx), dashboard, settings, unit conversion
+## Phase 3 — Toro Lynx Integration
 
-### Phase 5 — Vendor Strategy *(planning only, post-release)*
-- [ ] **5.1** Document vendor onboarding architecture based on Lynx pattern
-- [ ] **5.2** Prioritize Shayp / Masgrau / others by customer demand
+### 3.0 — Verified (no work needed)
+
+- [x] **3.0.1** Unique constraint on `connected_water_meter_hourly_records` — already declared in original CREATE TABLE migration (`cwmhr_device_datetime_unique`). No additional migration needed. *(verified 2026-03-17)*
 
 ---
 
-## Phase 1 — Stabilize Existing Water Functionality
+### 3.A — Back Office: Water Integration Management (3d)
 
-- **Developers left** — no verbal handover, only codebase + documents
-- **Routes confirmed** registered via `RouteServiceProvider.boot()` under `api/v2`
-- **Lynx Connector** — Adare Manor pilot, deadline end of March 2026
-- **Lynx data model** — own `lynx_*` tables (different granularity: daily zone-level vs hourly device-level)
-- **Notifications cancelled** — Lynx replaces irrigation planning. Existing notification FE code to be removed.
-- **Mobile cancelled** — no mobile push notifications or mobile-specific APIs in this release
+> **Dependency:** 3.B.1 migrations must be run before back office forms can be tested end-to-end. Build 3.B.1 first, then 3.A.
 
----
+Replaces all manual seed migrations. Admins configure all integrations from the back office.
 
-## Phase 0 — Verify & Fix Existing Water Page
+#### 3.A.1 — Back Office: Connected Meter Devices (Masgrau / Shayp) (1.5d)
 
-**Goal:** Fix what's broken, verify what's working. No new features.
+**Backend** (`core-2.0`):
 
-### Bug Fixes
+| File | What |
+|------|------|
+| `app/Http/Controllers/Water/ConnectedWaterMeterDeviceController.php` | `index, store, update, destroy` |
+| `app/Http/Requests/Water/CreateConnectedWaterMeterDeviceRequest.php` | Validation |
+| `app/Http/Requests/Water/UpdateConnectedWaterMeterDeviceRequest.php` | Validation |
+| `app/Resources/Water/ConnectedWaterMeterDeviceResource.php` | JSON transformer |
 
-| Bug | Issue | Investigation path |
-|-----|-------|--------------------|
-| #2254 | Can't delete water records | `WaterReadingController@destroy` → check `WaterReadingService.deleteWaterReading()` + `DeleteWaterSiteConsumption` listener cascade + FE store error handling |
-| #2258 | Can't update water records | `WaterReadingController@update` → check `WaterReadingService.updateWaterReading()` validation (meter reading can't go below previous) |
-| #2263 | Wrong previous reading value | Check `WaterReadingService.calculateWaterReadingValues()` or FE form "previous reading" hint |
-| #2283 | Calendar total consumption wrong | Check `WaterUsageService.getIrrigationCalendar()` + `dashboardDataMapper.mapDaysWateredData()` in FE |
-| #2259 | Calendar error on status change | **Close as "won't fix"** — notification feature cancelled by Epic 341 |
-| #2268 | Notifications not generating | **Close as "won't fix"** — notification system cancelled by Epic 341 |
+Route in `routes/api.php`:
+```php
+Route::apiResource('water/connected-meter-devices', ConnectedWaterMeterDeviceController::class);
+```
 
-### Verification Checklist
+**Back Office Frontend** (`back-office`):
 
-Per Epic 341 acceptance criteria — verify each card, modal, setting, and table works correctly:
+| File | What |
+|------|------|
+| `src/stores/connectedWaterMeter.ts` | `fetchDevices, createDevice, updateDevice, deleteDevice` |
+| `src/pages/water/index.vue` | List all devices, filter by tenant, "Add Device" button |
+| `src/components/water/ConnectedMeterDeviceForm.vue` | Modal form |
 
-| Area | What to verify |
-|------|---------------|
-| ET Card | ET last 24h, total since last irrigation, ET tomorrow. If correction factor ≠ 100%, show both raw ET₀ and adjusted ET. Bar chart in modal. |
-| Rainfall Card | Last 24h, since last irrigation, +24h forecast |
-| Site Conditions Card | Air temp, soil temp, soil moisture — each with now/min/max (last 24h) |
-| Water Usage Card | Last 24h total, this month total + trend vs last month, forecast. "Last reading: X days ago" if no recent data. Trend: ↑ red, ↓ green, = grey |
-| Days Watered Card | Days this month, total this year, avg water/day + trend vs last month |
-| Water Budget Card | Total this year vs annual allowance + progress bar (grey <60%, yellow 60-80%, red >80%), vs last year |
-| Water Usage Modal | Bar chart, tabs (Outflows/Inflows), range selector (14d/30/90/custom), daily/cumulative/hourly toggle, multi-select outflows |
-| Days Watered Modal | Calendar month view, outflow picker, green/red dots only |
-| Water Budget Modal | Full-year line chart (Jan–Dec), year selector, outflow multi-select, monthly/cumulative toggle |
-| ET Modal | Bar chart, range 7d/30/90/custom, daily/cumulative toggle |
-| Rainfall Modal | Chart, range 7d/30/90/custom, daily/cumulative toggle |
-| Settings | Annual allowance, irrigation period (from/to), ET correction factor per outflow |
-| Records Table | Manual Readings / Connected Meter Logs tabs, date/pump/type filters, pagination (10/page), source icons |
+Form fields:
+- **Water Source section:** tenant (select), name, `source_type` (inflow / outflow), site association (filtered by tenant)
+- **Device section:** integration type (Masgrau / Shayp — drives `measurement_type` automatically), `device_reference_id`, status
+- On save: creates `water_source` + `water_source_default_associations` + `connected_water_meter_device` in one `DB::transaction()`
+- On delete device: keeps `water_source` intact (historical readings must not be lost)
 
----
+**Masgrau seed migration transition:**
+1. Build and deploy this back office form
+2. Recreate the 3 Masgrau devices (PG1/PG2/PG3) via the form for Infinitum Living tenant
+3. Verify existing `water_readings` still link correctly (they FK to `water_source_id`, not the device — no data loss)
+4. Mark `2026_03_13_000001_seed_masgrau_water_sources_and_devices.php` as superseded in comments
 
-## Phase 1 — Remove Notification UI & Simplify Calendar + UI Rework
+- [x] Backend controller + request + service *(2026-03-17)*
+  - `CreateConnectedMeterDeviceRequest.php` — validates tenant, name, source_type, integration_type, device_reference_id, site_id
+  - `ConnectedMeterDeviceAdminService.php` — atomic create (water_source + device + associations), list, soft-delete
+  - `ConnectedWaterMeterController.php` — index, store, destroy
+  - Routes: `GET/POST /api/v2/water/connected-devices`, `DELETE /api/v2/water/connected-devices/{id}`
+- [x] Back office store + page + form *(2026-03-17)*
+  - `src/stores/connectedMeterDevice.ts` — fetchDevices, createDevice, deleteDevice
+  - `src/pages/water/index.vue` — list table + create modal
+  - `src/types/water.ts` — TypeScript interfaces
+  - i18n keys added to en.yml, fr.yml, es.yml
+- [ ] Masgrau 3 devices recreated via form, seed migration superseded
 
-**Goal:** Strip out cancelled features. Simplify Days Watered to 2-color system. Migrate UI to Volt/Tailwind design system.
+#### 3.A.2 — Back Office: Lynx Club Configuration (1.5d)
 
-### What to remove from UI
-- ~~Top left section: daily irrigation notification cards ("Did you irrigate yesterday?")~~ **DONE 2026-03-12**
-- ~~Inline notification expansion / confirmation flow~~ **DONE 2026-03-12**
-- ~~Bulk mark yes/no controls~~ **DONE 2026-03-12**
-- Light blue "planned irrigation" dots from Days Watered calendar
-- Irrigation frequency setting from Water Settings (keep in codebase)
-- Mobile notification settings
+**Backend** (`core-2.0`):
 
-### UI Rework (DONE 2026-03-12)
-Full migration of Water Page to standardized Volt/Tailwind design system:
-- Removed NotificationCard from WaterTopSection, simplified grid to `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`
-- All 6 dashboard cards now match dashboard pattern (group hover, scale, arrow icon for clickable cards)
-- All colors migrated: `text-gray-*` → `text-surface-*`, `text-green-*` → `text-emerald-*`, `bg-gray-*` → `bg-surface-*`
-- All CoreUI/Bootstrap components replaced with Volt equivalents (Dialog, Button, Select, Checkbox, etc.)
-- Bottom section tabs migrated to `MContentTabs`/`MContentTab`
-- All scoped CSS/SCSS removed, using Tailwind utilities only
-- Files modified: water.vue, WaterTopSection, WaterBottomSection, WaterHeaderSection, WaterInsightCard, WaterReadingsTable, WaterSourceForm, WaterModalContainer, NotificationCard, BulkConsumptionPanel, ETCard, RainfallCard, WaterUsageCard, DaysWateredCard, SiteConditionsCard, WaterBudgetCard, CardLoadingSkeleton
+| File | What |
+|------|------|
+| `app/Http/Controllers/Lynx/LynxClubConfigController.php` | `index, store, update, destroy, generateApiKey` |
+| `app/Http/Requests/Lynx/CreateLynxClubConfigRequest.php` | Validation |
+| `app/Http/Requests/Lynx/UpdateLynxClubConfigRequest.php` | Validation |
+| `app/Services/Lynx/LynxApiKeyService.php` | `generate()` → returns plaintext once, stores bcrypt hash |
+| `app/Resources/Lynx/LynxClubConfigResource.php` | JSON transformer |
 
-### What to remove/disable in backend
-- Don't build: notification scheduler, notification APIs, suggested value service, min/max range service, daily irrigation logs table
-- Disable FE store methods that call non-existent notification endpoints (prevent silent errors)
-- Close GitLab issues as "won't do": #348, #349, #350, #351, #352, #363, #364, #437, #370, #371, #372, #436, #1235
+Routes in `routes/api.php`:
+```php
+Route::apiResource('lynx/clubs', LynxClubConfigController::class);
+Route::post('lynx/clubs/{id}/generate-key', [LynxClubConfigController::class, 'generateApiKey']);
+```
 
-### Calendar simplification
-- Days Watered calendar: **2 colors only**
-  - Green = irrigation record exists (manual entry, connected meter, or Lynx data)
-  - Red = no data received, no data entry
-- Click on a date to toggle green ↔ red
-- If water record exists from connected meter or Lynx for that day+outflow → user **cannot** toggle (prevents conflicts with real data)
-- Total irrigated days shown at top of modal and on card
+**Back Office Frontend** (`back-office`):
 
-### Graph-data endpoint
-FE store calls `GET /water/graph-data` (water.js:118) → either create in `WaterController` or redirect FE to existing `/water/usage`.
+| File | What |
+|------|------|
+| `src/stores/lynxClub.ts` | `fetchClubs, createClub, updateClub, deleteClub, generateApiKey` |
+| `src/pages/water/lynx.vue` | List clubs: tenant name, last_sync_at, last_sync_status, API key status |
+| `src/components/water/LynxClubForm.vue` | Modal form — 2 tabs: Configuration / Sync Logs |
 
----
+Form fields (Configuration tab): tenant (select), `club_identifier`, unit (m3 / gallons), timezone (select), `irrigation_day_start` (time picker)
+Note: **no `source_type` field** — Lynx zones are always outflows (D8).
+Sync Logs tab: read-only table from `lynx_sync_logs` for that club.
+Generate API Key: shows plaintext key once in modal with copy button — warns it won't be shown again.
 
-## Phase 2 — Verify Connected Meters
-
-**Goal:** Ensure Shayp/Masgrau data works correctly. Promote staging items to prod.
-
-### Verification
-
-| Check | What | GitLab |
-|-------|------|--------|
-| Data loads | Shayp/Masgrau hourly records appear on Water Page | — |
-| IoT vs Manual | Source distinction visible in Records table | #384 (in review) |
-| Daily aggregation | `AggregateConnectedWaterMeterDailyReadings` cron works | #383 (staging) |
-| Hourly view | "Hourly" toggle appears in Water Usage modal for connected meter outflows | — |
-| Mixed selection | If mixed connected + manual outflows selected and "Hourly" chosen: show validation message | — |
-| Source icons | Manual (💧) / Connected meter (📟) / Irrigation system (🔗) | — |
-
-### Staging → Production Promotion
-
-8 items on staging, verify and deploy:
-- #376: Water Records API with Advanced Filters
-- #377: Monthly Irrigation Data API
-- #378: Update Notification Status API
-- #379: Annual Outflow Data API
-- #380: ET Data API
-- #381: Rainfall Data API
-- #382: Database Structure for IoT Readings
-- #383: Daily Totals Calculation Script
+- [x] Backend controller + requests + service + resource *(2026-03-17)*
+  - `LynxClubConfigController.php` — index, store, update, destroy, generateApiKey, syncLogs
+  - `CreateLynxClubConfigRequest.php`, `UpdateLynxClubConfigRequest.php`
+  - `LynxApiKeyService.php` — generates `lynx_` prefixed random key, stores bcrypt hash
+  - `LynxClubConfigResource.php` — JSON transformer (hides api_key_hash, exposes has_api_key)
+  - Routes: `apiResource lynx/clubs`, `POST lynx/clubs/{id}/generate-key`, `GET lynx/clubs/{id}/sync-logs`
+- [x] Back office store + page + form *(2026-03-17)*
+  - `src/stores/lynxClub.ts` — CRUD + generateApiKey + fetchSyncLogs
+  - `src/pages/water/lynx.vue` — list table + create/edit modals + API key display modal + sync logs modal
+  - i18n keys added to all 3 locale files
 
 ---
 
-## Phase 3 — Toro Lynx Connector
+### 3.B — Lynx Backend: Data Model + Ingest + Promotion (3.5d)
 
-**Goal:** reuse the existing push infrastructure to unblock mobile water flows.
+> **Build order: 3.B.1 → 3.B.2 → 3.B.3 → 3.B.4** (each step depends on the previous)
 
-- [ ] **6.1** Create water irrigation push job/command using the existing `PushNotificationService`
-- [ ] **6.2** Create mobile water notification list endpoint
-- [ ] **6.3** Create mobile water submit/confirm endpoint
-- [ ] **6.4** Respect tenant reminder time + user push enablement
-- [ ] **6.5** Write mobile-facing API documentation with payload examples
+#### 3.B.1 — Migrations (0.5d)
 
-**3.A1 — API Contract + Data Model (1d)**
+| Migration | Table |
+|-----------|-------|
+| `2026_03_XX_create_lynx_club_configs_table.php` | `lynx_club_configs` — tenant_id, club_identifier (unique), api_key_hash, unit, timezone, irrigation_day_start, last_sync_at, last_sync_status |
+| `2026_03_XX_create_lynx_water_records_table.php` | `lynx_water_records` — lynx_club_config_id (FK), zone_code, zone_name, irrigation_date, total_volume, auto_volume, manual_volume, data_source, station_count, sync_id, water_reading_id (FK nullable). UNIQUE: (lynx_club_config_id, zone_code, irrigation_date) |
+| `2026_03_XX_create_lynx_sync_logs_table.php` | `lynx_sync_logs` — lynx_club_config_id (FK), sync_id, agent_version, records_received, records_accepted, records_rejected, status, error_details (json), duration_ms |
+| `2026_03_XX_add_is_lynx_record_to_water_readings.php` | Add `is_lynx_record` boolean default false to `water_readings` — enables Lynx detection in Water Page (D9) |
 
-Sync payload schema:
+- [x] 4 migrations created *(2026-03-17)*
+  - `2026_03_17_100001_create_lynx_club_configs_table.php`
+  - `2026_03_17_100002_create_lynx_water_records_table.php`
+  - `2026_03_17_100003_create_lynx_sync_logs_table.php`
+  - `2026_03_17_100004_add_is_lynx_record_to_water_readings_table.php`
+- [x] `WaterReading` model updated with `is_lynx_record` field *(2026-03-17)*
+- [x] Migrations run successfully on cloud dev DB (via core2 Docker container) *(2026-03-17)*
+- [x] All 4 confirmed present in DB (`lynx_club_configs`, `lynx_water_records`, `lynx_sync_logs`, `is_lynx_record` column on `water_readings`) *(2026-03-17)*
+
+#### 3.B.2 — Models + Repositories (0.5d)
+
+| File | What |
+|------|------|
+| `app/Models/Lynx/LynxClubConfig.php` | Model |
+| `app/Models/Lynx/LynxWaterRecord.php` | Model |
+| `app/Models/Lynx/LynxSyncLog.php` | Model |
+| `app/Enums/LynxDataSource.php` | `actual / scheduled / backfill` |
+| `app/Enums/LynxSyncStatus.php` | `success / partial / failed` |
+| `app/Interfaces/Lynx/LynxClubConfigRepositoryInterface.php` | Contract |
+| `app/Interfaces/Lynx/LynxWaterRecordRepositoryInterface.php` | Contract |
+| `app/Repositories/Lynx/LynxClubConfigRepository.php` | Implementation |
+| `app/Repositories/Lynx/LynxWaterRecordRepository.php` | Implementation |
+
+- [x] Models + enums + repositories created *(2026-03-17)*
+  - `app/Enums/LynxDataSource.php`, `app/Enums/LynxSyncStatus.php`
+  - `app/Models/Lynx/LynxClubConfig.php`, `LynxWaterRecord.php`, `LynxSyncLog.php`
+  - `app/Interfaces/Lynx/LynxClubConfigRepositoryInterface.php`, `LynxWaterRecordRepositoryInterface.php`
+  - `app/Repositories/Lynx/LynxClubConfigRepository.php`, `LynxWaterRecordRepository.php`
+  - Bindings registered in `RepositoryServiceProvider.php`
+
+#### 3.B.3 — Ingest Endpoint (1d)
+
+`POST /api/v2/lynx/sync` — authenticated via `X-Lynx-Api-Key` header.
+
+| File | What |
+|------|------|
+| `app/Http/Middleware/LynxApiKeyAuth.php` | Resolves club config from bcrypt-hashed key |
+| `app/Http/Requests/Lynx/LynxSyncRequest.php` | Validates full payload |
+| `app/Http/Controllers/Lynx/LynxSyncController.php` | Orchestrates ingest |
+| `app/Services/Lynx/LynxIngestService.php` | Upserts `lynx_water_records`, writes `lynx_sync_logs`, updates `last_sync_at` on config |
+
+**Unit conversion:** payload arrives in the club's configured unit (`m3` or `gallons`). `LynxIngestService` must normalize volumes to the tenant's preferred unit before writing `lynx_water_records`. Use `lynx_club_configs.unit` for the conversion.
+
+Request payload:
 ```json
 {
-  "sync_id": "uuid", "club_identifier": "adare-manor", "agent_version": "1.0.0",
-  "sync_date": "2026-03-15", "unit": "m3",
+  "sync_id": "uuid",
+  "club_identifier": "adare-manor",
+  "agent_version": "1.0.0",
+  "sync_date": "2026-03-15",
+  "unit": "m3",
   "records": [{
-    "zone_code": "1GR", "zone_name": "Hole 1 Green", "irrigation_date": "2026-03-14",
-    "total_volume": 45.2, "auto_volume": 42.1, "manual_volume": 3.1,
-    "data_source": "actual", "station_count": 8
+    "zone_code": "1GR",
+    "zone_name": "Hole 1 Green",
+    "irrigation_date": "2026-03-14",
+    "total_volume": 45.2,
+    "auto_volume": 42.1,
+    "manual_volume": 3.1,
+    "data_source": "actual",
+    "station_count": 8
   }]
 }
 ```
 
-Three tables:
-- **`lynx_club_configs`** — tenant_id, club_identifier (unique), api_key_hash, unit, timezone, irrigation_day_start, last_sync_at/status, timestamps
-- **`lynx_water_records`** — lynx_club_config_id (FK), zone_code, zone_name, irrigation_date, volumes (total/auto/manual), data_source (actual|scheduled|backfill), sync_id, water_reading_id (FK nullable). UNIQUE: (config_id, zone_code, irrigation_date)
-- **`lynx_sync_logs`** — lynx_club_config_id (FK), sync_id, agent_version, records received/accepted/rejected, status, error_details (json), duration_ms
+Response:
+```json
+{ "sync_id": "uuid", "status": "success", "accepted": 18, "rejected": 0, "errors": [] }
+```
 
-**3.A2 — Club Config + API Key Management (1.5d)**
+Route in `routes/api.php`:
+```php
+Route::post('lynx/sync', [LynxSyncController::class, 'sync'])->middleware(LynxApiKeyAuth::class);
+```
 
-`LynxClubConfig` model. Back Office Vue page: list/create/edit clubs, generate API key (shown once, stored bcrypt). `X-Lynx-Api-Key` auth middleware.
+- [x] Middleware + request + controller + service *(2026-03-17)*
+  - `LynxApiKeyAuth` — bcrypt-checks `X-Lynx-Api-Key` against `api_key_hash`, binds config to request
+  - `LynxSyncRequest` — validates full payload including per-record fields
+  - `LynxIngestService` — upserts records, converts units, writes sync log, updates config
+  - `LynxSyncController` — thin orchestrator with error logging
+- [x] Route registered in `routes/api/lynx.php` + `RouteServiceProvider` *(2026-03-17)*
+- [x] Upsert on re-sync (UNIQUE constraint + `findByClubZoneDate` in repository)
+- [x] Unit conversion applied before writing (gallons ↔ m3 in LynxIngestService)
+- [x] Sync log written on every call (success and failure)
 
-**3.A3 — Ingest Endpoint (1.5d)**
+#### 3.B.4 — Promotion Service + Command (1d)
 
-`POST /api/v2/lynx/sync` — authenticate via API key → validate payload → upsert `lynx_water_records` → create/update `WaterReading` (with `is_connected_device_record = true`) → log to `lynx_sync_logs` → return accept/reject counts.
+Runs daily, promotes unpromoted `lynx_water_records` → `water_readings`.
 
-**3.A4 — Health Monitoring — Minimal MVP (1.5d)**
+| File | What |
+|------|------|
+| `app/Services/Lynx/LynxDailyPromotionService.php` | Core logic |
+| `app/Console/Commands/PromoteLynxDailyReadings.php` | Artisan command `water:promote-lynx-daily-readings` |
 
-Daily scheduled job: flag clubs with no sync in >26h → Slack alert. Minimal Back Office visibility for CS team. Full dashboard deferred to V2.
+Service logic:
+1. For each `lynx_club_config`, query `lynx_water_records` where `water_reading_id IS NULL`
+2. For each `zone_code`: find or create `water_source` — **always `source_type = 'outflow'`**, linked to tenant via `lynx_club_configs.tenant_id`
+3. On zone `water_source` creation: also create `water_source_default_associations` to link the source to the tenant's site (required for Water Page site filtering)
+4. Call `WaterReadingService::createWaterReading()` with `is_lynx_record = true` and `is_connected_device_record = true`
+5. **Timezone note:** `irrigation_date` comes from the agent already adjusted for irrigation day boundary — use it as-is, do not re-derive from UTC
+6. Set `lynx_water_records.water_reading_id` = id of created reading
 
-**3.A5 — Water Page Integration (1.5d)**
+Add to `routes/console.php`:
+```php
+// Promote Lynx daily zone records to water readings — runs after agent pushes at 06:00
+Schedule::command('water:promote-lynx-daily-readings')->dailyAt('06:30');
+```
 
-Lynx zones appear as outflows in all Water Page views:
-
-| View | How Lynx Data Appears |
-|------|----------------------|
-| Water Usage card | Lynx zones included in totals. Daily data only (no hourly). |
-| Water Usage modal | Lynx zones in outflow selector. "Hourly" toggle hidden for Lynx outflows. Daily + cumulative work normally. |
-| Days Watered calendar | Green dot if Lynx reported irrigation that day. Per-zone view via outflow picker. |
-| Water Budget | Lynx volume counts toward annual allowance. |
-| Water Records table | Lynx records in "Connected Meter Logs" tab with 🔗 irrigation system source icon. |
-
-New capability: **per-hole/zone breakdown** when a Lynx outflow is selected.
-
-Each zone maps to a `WaterSource` (outflow), auto-created on first sync or configured in club config.
-
-### Workstream B — Sync Agent (Python, parallel with A)
-
-**3.B1 — DB Query Layer (1.5d):** Project setup (`maya-lynx-agent`), SQL Server via pyodbc, query `water_use_upload` (actuals, 7-day window) + `schedule_activity_download` (scheduled fallback), join `station` on SUID, config from YAML.
-
-**3.B2 — Reconciliation Engine (2d):** Per zone per irrigation day: actuals → scheduled → skip. Station→zone aggregation (parse `1GR2` → `1GR`). Irrigation day boundary (3:55 PM configurable). Volume = `(duration/60) × station_flow`. Manual = total - auto. Edge cases: overseed, zero-duration rain hold, re-runs (upsert).
-
-**3.B3 — HTTPS Push (1d):** Build JSON matching A1 schema, POST with retry (3×, exponential backoff), handle responses + errors.
-
-**3.B4 — CLI + Scheduling (1d):** Flags: `--config`, `--dry-run`, `--backfill`, `--verbose`. Exit codes: 0=success, 1=partial, 2=API fail, 3=DB fail, 4=config error. Rotating log (10MB×5). Windows Task Scheduler docs.
-
-**3.B5 — Windows Package (1d):** PyInstaller → single `.exe`. Install to `C:\MayaLynx\`. Template `config.yaml`. Manual install for Adare Manor pilot. MSI installer deferred to April rollout (~10 additional clubs).
-
-### Integration
-
-**3.C1 — E2E Test (1.5d):** Mock Lynx DB → Agent → API → Water Page. Test: actuals only, scheduled fallback, mixed, gaps, overseed, rain hold, re-sync.
-
-**3.C2 — Adare Manor Pilot (1.5d):** Install on Lynx server (coordinate MSM/Shaun Bowles). Config: irrigation_day_start=15:55, tz=Europe/Dublin. Dry-run → live → monitor 3–5 days.
+- [x] Service created — `app/Services/Lynx/LynxDailyPromotionService.php` *(2026-03-17)*
+  - Loops all club configs → finds unpromoted lynx_water_records → promotes each
+  - `findOrCreateWaterSource()` keyed on `(tenant_id, water_meter_id = zone_code)`
+  - Water source created as `outflow` + `daily_consumption` (D8, D10)
+  - `site_id` nullable on `lynx_club_configs` — site association created when set
+  - Extra migration added: `2026_03_17_100005_add_site_id_to_lynx_club_configs_table.php` ✅ RAN
+- [x] `water_source` auto-created per zone on first encounter (water_source_default_associations created when site_id is configured)
+- [x] `is_lynx_record = true` + `is_connected_device_record = true` set on created `water_readings`
+- [x] `irrigation_date` used as-is (no timezone re-derivation per plan note)
+- [x] Command created — `app/Console/Commands/PromoteLynxDailyReadings.php` with `$signature = 'water:promote-lynx-daily-readings'`
+- [x] Schedule added to `routes/console.php` — `dailyAt('06:30')` *(2026-03-17)*
+- [x] DevOps notified — GO_LIVE_PROCEDURE.md step 2b updated with all 3 scheduled commands *(2026-03-17)*
 
 ---
 
-## Phase 4 — QA & Hardening
+### 3.C — Water Page: Display Lynx Data (1.5d)
+
+Lynx zones land in `water_readings` via promotion service — most views work automatically.
+Lynx records are identified by `is_lynx_record = true` on `water_readings` (D9). The `GET /water/readings` and `GET /water/sources` API responses must expose this flag.
+
+Explicit frontend changes:
+
+| Component | Change |
+|-----------|--------|
+| `WaterUsageModal` | Hide "Hourly" toggle when selected outflow has `is_lynx_record` readings |
+| `DaysWateredCalendar` | Lock dots for days where `is_lynx_record = true` — extend existing connected meter lock logic |
+| `WaterRecordsTable` | Show 🔗 icon for rows where `is_lynx_record = true` |
+| `WaterUsageModal` | Per-zone breakdown panel when a Lynx outflow is selected |
+
+- [x] `is_lynx_record` exposed in water readings API response — field is in `$fillable` + `$casts`, auto-serialized *(2026-03-17)*
+- [x] Hourly toggle hidden for Lynx outflows — Lynx sources have no `connected_water_meter_device`, toggle already conditional *(2026-03-17)*
+- [x] 🔗 icon in Water Records table — already implemented in `WaterReadingsTable.vue:101`, now uses proper `is_lynx_record` flag *(2026-03-17)*
+- [x] Calendar dots locked for Lynx days — `useDaysWateredStatus.js` protects `irrigated` status (which Lynx readings produce) *(2026-03-17)*
+- [x] `useWaterReadings.js` fixed: Lynx detection changed from notes-string-matching to `!!reading.is_lynx_record` flag; `can_edit`/`can_delete` disabled for Lynx records *(2026-03-17)*
+- [ ] Per-zone breakdown in Water Usage modal (deferred to V2 — requires additional API endpoint to return per-zone data from `lynx_water_records`)
+
+---
+
+### 3.D — Health Monitoring — Minimal MVP (1d)
+
+Daily job: flag clubs with no sync in >26h → Slack alert.
+Back office visibility: `last_sync_at` + `last_sync_status` already shown in Lynx clubs list (3.A.2).
+Full health dashboard deferred to V2.
+
+| File | What |
+|------|------|
+| `app/Console/Commands/CheckLynxSyncHealth.php` | `lynx:check-sync-health` |
+| `app/Services/Lynx/LynxHealthService.php` | Query stale clubs, send Slack alert |
+
+Add to `routes/console.php`:
+```php
+Schedule::command('lynx:check-sync-health')->dailyAt('08:00');
+```
+
+- [x] Command + service created *(2026-03-17)*
+  - `app/Console/Commands/CheckLynxSyncHealth.php` — `lynx:check-sync-health`
+  - `app/Services/Lynx/LynxHealthService.php` — queries stale clubs (>26h since last sync), sends Slack webhook
+  - Schedule added to `routes/console.php` — `dailyAt('08:00')`
+- [x] Slack alert fires when club has no sync in >26h — via `config('services.slack.lynx_webhook_url')`
+- [x] Alert includes club name, last_sync_at, last_sync_status
+
+---
+
+### 3.E — Python Sync Agent (separate repo `maya-lynx-agent`, parallel with 3.B–3.D)
+
+#### 3.E.1 — DB Query Layer (1.5d)
+
+```
+maya-lynx-agent/
+├── config.yaml                  (host, port, db, api_key, api_url, timezone, irrigation_day_start)
+├── agent.py                     (entry point)
+├── lynx/
+│   ├── connection.py            (pyodbc SQL Server connection)
+│   ├── queries.py               (water_use_upload + schedule_activity_download + station join on SUID)
+│   └── models.py                (dataclasses: StationRecord, ZoneRecord)
+```
+
+- [ ] pyodbc connection configured from YAML
+- [ ] `water_use_upload` query (7-day window, join `station` on SUID)
+- [ ] `schedule_activity_download` query (fallback, join `station` on SUID)
+
+#### 3.E.2 — Reconciliation Engine (2d)
+
+```
+lynx/
+├── reconciler.py    (actuals vs scheduled per zone per irrigation day)
+├── aggregator.py    (station → zone: "1GR2" → "1GR", volume = (duration/60) × station_flow)
+└── boundary.py      (irrigation day boundary — configurable, default 15:55)
+```
+
+Logic per zone per irrigation day:
+1. Has `water_use_upload` actuals? → use them (`data_source = "actual"`)
+2. No actuals? → has `schedule_activity_download`? → use it (`data_source = "scheduled"`)
+3. Neither? → no record (gap — don't invent data)
+
+Edge cases: overseed (multiple downloads/day → sum all), rain hold (zero actual = valid, include it), re-sync (upsert via UNIQUE constraint), satellite failure (accept gap).
+
+- [ ] All edge cases handled per `LYNX_COMPLETE_REFERENCE.md` section 4
+- [ ] Irrigation day boundary correct (timestamps before `day_start` belong to previous day)
+- [ ] `manual_volume = total_duration - auto_duration`
+
+#### 3.E.3 — HTTPS Push (1d)
+
+```
+maya/
+└── client.py    (POST /api/v2/lynx/sync, retry 3× exponential backoff)
+```
+
+- [ ] Payload matches API contract (3.B.3)
+- [ ] Retry 3× with exponential backoff on 5xx
+- [ ] 4xx errors logged and not retried (config/auth issue — needs human intervention)
+- [ ] Full response body logged on failure
+
+#### 3.E.4 — CLI + Logging (1d)
+
+Flags: `--config <path>`, `--dry-run` (reconcile only, no push — outputs JSON to stdout), `--backfill` (include `water_use` historical table), `--verbose`
+Exit codes: 0=success, 1=partial, 2=API fail, 3=DB fail, 4=config error
+Rotating log: 10MB × 5 files at `C:\MayaLynx\logs\`
+
+- [ ] All CLI flags implemented
+- [ ] Rotating log configured
+- [ ] `--dry-run` outputs reconciled payload JSON without pushing
+- [ ] Exit codes documented in README
+
+#### 3.E.5 — Windows Package (1d)
+
+- PyInstaller → single `.exe`
+- Install path: `C:\MayaLynx\`
+- Template `config.yaml` bundled
+- Windows Task Scheduler: daily 06:00 local time (agent runs before 06:30 promotion service)
+- Manual install for Adare Manor pilot. MSI installer deferred to April (~10 additional clubs).
+
+- [ ] `.exe` builds and runs on clean Windows machine
+- [ ] `config.yaml` template documented
+- [ ] Task Scheduler setup instructions written in README
+
+---
+
+### 3.F — Integration Test + Pilot (3d)
+
+#### 3.F.1 — E2E Test (1.5d)
+
+Mock Lynx DB → agent → API → promotion service → Water Page.
+
+| Scenario | Expected outcome |
+|----------|-----------------|
+| Actuals only | `data_source = "actual"`, correct volumes |
+| Scheduled fallback | `data_source = "scheduled"` when no actuals |
+| Mixed zones (some actual, some scheduled) | Each zone independently sourced |
+| Gap (no data either source) | No record created |
+| Overseed (multiple downloads) | Sum of all download records |
+| Rain hold | Zero actual included (`data_source = "actual"`, volume = 0) |
+| Re-sync same day | Upsert — latest sync wins, no duplicate |
+
+- [ ] All 7 scenarios pass `--dry-run`
+- [ ] All 7 scenarios push correctly to staging and appear on Water Page
+
+#### 3.F.2 — Adare Manor Pilot (1.5d)
+
+- Coordinate with MSM / Shaun Bowles for access to Lynx server
+- Configure: `irrigation_day_start=15:55`, `timezone=Europe/Dublin`, `club_identifier=adare-manor`
+- Run `--dry-run` → review reconciled output with MSM before pushing
+- Go live → monitor 3–5 days
+- Verify zones appear as outflows on Water Page for Adare Manor tenant
+
+- [ ] Dry-run output reviewed and approved by MSM
+- [ ] Live push confirmed — sync log shows `status=success`
+- [ ] Water Page shows Adare Manor zones as outflows with correct volumes
+- [ ] No duplicate records after agent re-runs
+
+---
+
+## Phase 4 — QA & Hardening (4d)
 
 ### 4.1 — Execute test cases
 
-GitLab test cases: #1192 (Water 2.0 general), #1193 (settings), #1224 (calendar behavior).
+GitLab: #1192 (Water 2.0 general), #1193 (settings), #1224 (calendar behavior)
+Note: #345, #346 (notification test cases) — no longer applicable, feature cancelled.
 
-Note: #345 (notifications) and #346 (days watered modal with notification status) are **no longer applicable** — notification feature cancelled.
-
-### 4.2 — Acceptance criteria (from Epic 341)
+### 4.2 — Acceptance criteria (Epic 341)
 
 - [ ] Water Page loads correctly with Shayp/Masgrau data
-- [ ] All 6 insight cards show correct values with proper trend indicators and colors
-- [ ] Each card modal opens with working filters, chart types, and outflow selectors
-- [ ] Days Watered calendar shows green (irrigated) / red (not irrigated) — no other colors
-- [ ] Water Budget progress bar uses correct color thresholds
-- [ ] Water Settings work per outflow (allowance, period, ET factor)
+- [ ] All 6 insight cards: correct values, trend indicators, colors
+- [ ] Each card modal: working filters, chart types, outflow selectors
+- [ ] Days Watered: green/red only — no other colors
+- [ ] Water Budget progress bar: correct thresholds (grey <60%, yellow 60-80%, red >80%)
+- [ ] Water Settings per outflow: allowance, period, ET factor
 - [ ] No irrigation planning or notification UI visible anywhere
+- [ ] Connected meter devices manageable from back office (no seed migrations needed)
 - [ ] Lynx ingest API accepts zone-day data with per-club API key auth
-- [ ] Lynx zones appear as outflows in Water Usage card, modal, Days Watered, Budget, and Records table
-- [ ] Per-hole/zone breakdown visible when Lynx outflow is selected
-- [ ] Python agent queries Lynx SQL Server, reconciles actual vs scheduled, pushes clean data to Maya
-- [ ] Agent handles irrigation day boundary correctly
-- [ ] Water Records table shows Lynx records alongside manual and meter records with distinct source icon
+- [ ] Lynx club configurable from back office: tenant, timezone, irrigation_day_start, API key
+- [ ] Lynx zones appear as outflows in: Usage card, Usage modal, Days Watered, Budget, Records table
+- [ ] Per-hole/zone breakdown visible when Lynx outflow selected in Usage modal
+- [ ] Hourly toggle hidden for Lynx outflows
+- [ ] Python agent: reconciles actual vs scheduled, correct irrigation day boundary, pushes to Maya
+- [ ] Water Records table: Lynx records with 🔗 icon alongside manual and meter records
+- [ ] `water:aggregate-connected-daily-readings` running hourly (DevOps confirmed)
+- [ ] `water:promote-lynx-daily-readings` running daily at 06:30 (DevOps confirmed)
+- [ ] `lynx:check-sync-health` running daily at 08:00 (DevOps confirmed)
 
 ### 4.3 — Regression
 
-Water source CRUD, reading CRUD (manual + connected + Lynx), dashboard cards/modals, settings (ET factor, allowance, period), unit conversion (metric ↔ imperial).
+Water source CRUD, reading CRUD (manual + connected + Lynx), dashboard, calendar, settings (ET factor, allowance, period), unit conversion (m³ ↔ gallons / 100 ft³).
 
 ---
 
-## Phase 5 — Vendor Strategy *(planning only, post-release)*
+## Out of Scope (Epic 341)
 
-**5.1** Document standard vendor onboarding pattern based on Lynx pattern: config per vendor, data normalization (units/timestamps/granularity), Back Office UI.
-
-**5.2** Prioritize Shayp / Masgrau / others by customer demand.
-
----
-
-## Out of Scope (per Epic 341)
-
-| Item | Why |
-|------|-----|
-| Irrigation planning / notifications / nudging | Cancelled — Lynx replaces it |
-| Mobile push notifications | Cancelled with notifications |
-| Four-color calendar (planned = light blue) | Simplified to two colors |
-| Data source conflict prevention (Shayp + Lynx) | No dual-source clients exist today — V2 Q2 2026 |
-| Full health monitoring dashboard / Slack alerts | Minimal MVP for CS team. Full dashboard V2. |
-| Full sync log viewer | Minimal MVP for CS team. Full viewer V2. |
-| Agent MSI installer with GUI wizard | Manual install for pilot. Installer for April rollout. |
+| Item | Reason |
+|------|--------|
+| Irrigation planning / notifications | Cancelled — Lynx replaces it |
+| Mobile push notifications | Cancelled |
+| 4-color calendar | Simplified to 2 colors |
+| Data source conflict (Shayp + Lynx same outflow) | No dual-source clients today — V2 Q2 2026 |
+| Full health monitoring dashboard | Minimal Slack alert MVP only — full dashboard V2 |
+| Full sync log viewer in back office | Sync Logs tab on club form only — full viewer V2 |
+| Agent MSI installer with GUI | Manual install for pilot — MSI for April rollout |
 
 ---
 
-## Phase 9 — QA, Cleanup, and Release Readiness
-
-```
-WK 1  ║ Phase 0: Bug fixes (#2254, #2258, #2263, #2283) + verify existing Water Page
-WK 2  ║ Phase 1: Remove notification UI + simplify calendar | Phase 2: Verify connected meters
-WK 3  ║ Phase 2: Promote staging to prod | Phase 3: API contract + club config (3.A1–A2)
-WK 4  ║ Phase 3: Cloud API (3.A3) ║ Agent DB + reconciliation (3.B1–B2)
-WK 5  ║ Phase 3: Health + Water Page (3.A4–A5) ║ Agent push + CLI + package (3.B3–B5)
-WK 6  ║ Phase 3: Integration test + pilot (3.C1–C2)
-WK 7  ║ Phase 4: QA, acceptance criteria, regression
-WK 8  ║ Buffer / Phase 5: Vendor strategy (planning only)
-```
-
-- [ ] **9.1** Add water-specific automated tests for all new APIs
-- [ ] **9.2** Run a focused Water 2.0 regression pass:
-  - source CRUD
-  - reading CRUD
-  - dashboard cards
-  - calendar
-  - notifications
-  - connected meter logs
-- [ ] **9.3** Verify which “stage” issues are already present in code vs still undocumented
-- [ ] **9.4** Decide whether legacy Water v1 (`/water/graph-data`) stays in scope
-- [ ] **9.5** If legacy Water v1 is out of scope, remove it from the critical path and document it as cleanup work
-
-```
-Phase 0 → Phase 1 → Phase 2
-                       ↓
-                  Phase 3 → Phase 4 → Phase 5
-```
-
-**Lynx critical path:** Phase 0 (bug fixes) → Phase 3 (Lynx connector) → Phase 4 (QA)
-
-## GitLab Issues — Disposition Under Epic 341
+## GitLab Issues Disposition
 
 | Action | Issues |
 |--------|--------|
-| **Fix** | #2254, #2258, #2263, #2283 |
-| **Close as "won't fix"** | #2259, #2268 (notification-related) |
-| **Close as "won't do"** | #348, #349, #350, #351, #352, #363, #364, #437, #370, #371, #372, #436, #439, #1230, #1235 (notification/mobile features cancelled) |
-| **Verify & promote** | #376, #377, #378, #379, #380, #381, #382, #383 (on staging) |
-| **Verify** | #384 (in review), #438 (testing), #440 (testing) |
+| **Fixed** | #2254, #2258, #2263, #2283 |
+| **Closed "won't fix"** | #2259, #2268 |
+| **Closed "won't do"** | #348, #349, #350, #351, #352, #363, #364, #437, #370, #371, #372, #436, #439, #1230, #1235 |
+| **Verify & promote to prod** | #376, #377, #378, #379, #380, #381, #382, #383 |
+| **In review / testing** | #384, #438, #440 |
 | **Keep for QA** | #1192, #1193, #1224 |
-| **No longer applicable** | #345, #346 (notification test cases) |
+| **No longer applicable** | #345, #346 |
