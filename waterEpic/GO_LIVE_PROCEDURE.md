@@ -1,6 +1,6 @@
-# Connected Water Meter — Go-Live Procedure
+# Water Epic 341 — Go-Live Procedure
 
-**Date:** 2026-03-13 | **Relates to:** CONNECTED_METER_UNIFICATION_PLAN.md
+**Date:** 2026-03-17 | **Relates to:** IMPLEMENTATION_PLAN.md, LYNX_COMPLETE_REFERENCE.md
 
 ---
 
@@ -8,187 +8,258 @@
 
 | # | Check | Status |
 |---|-------|--------|
-| 1 | Backend code deployed (aggregation service + `device_reference_id` support) | [ ] |
-| 2 | ETL code deployed (`masgrau.py` stateless, `shayp.py` updated, `lib/water.py` shared) | [ ] |
-| 3 | ETL `.env` has `MAYA_WATER_API_URL` and `MAYA_WATER_JWT` | [ ] |
-| 4 | Masgrau PLC reachable from ETL host (`95.129.253.218:502`) | [ ] |
+| 1 | Backend code deployed (Lynx ingest, promotion, health + connected meter admin) | [ ] |
+| 2 | Back office deployed (connected device form + Lynx club config form) | [ ] |
+| 3 | Water Page frontend deployed (Lynx display changes) | [ ] |
+| 4 | ETL code deployed (`pipelines/lynx/` + `masgrau.py` + `shayp.py` + `lib/water.py`) | [ ] |
+| 5 | ETL `.env` has all `LYNX_*` vars configured | [ ] |
+| 6 | Core `.env` has `SLACK_LYNX_WEBHOOK_URL` configured | [ ] |
+| 7 | Lynx SQL Server reachable from ETL host (club's local network) | [ ] |
+| 8 | ODBC Driver 17 for SQL Server installed on ETL host | [ ] |
 
 ---
 
-## Step-by-step Go-Live
+## Part A — Connected Meters (Masgrau + Shayp)
 
-### 1. Run migration — Seed water sources, devices & site associations
+### A.1. Run migration — Seed water sources, devices & site associations
 
 **Migration:** `2026_03_13_000001_seed_masgrau_water_sources_and_devices.php`
 
 ```bash
-cd /path/to/core-2.0
 php artisan migrate --path=database/migrations/2026_03_13_000001_seed_masgrau_water_sources_and_devices.php
 ```
 
-**What it creates:**
-
-| Table | Rows | Details |
-|-------|------|---------|
-| `water_sources` | 3 | PG1 Nord, PG2 Centre, PG3 Sud — `measurement_type=meter_reading`, `source_type=outflow` |
-| `connected_water_meter_devices` | 3 | `masgrau-infinitum-pg1`, `pg2`, `pg3` linked to water sources |
-| `water_source_default_associations` | 3 | Links each source to site |
+Creates 3 water_sources + 3 connected_water_meter_devices + 3 site associations for Infinitum Living.
 
 **Target tenant:** `a8b94cd9-2421-46ea-bfd2-71da150ad027`
 **Target site:** `37dcd69b-b9c9-478c-92b2-9680a81ebcf0`
 
-**Note:** Uses `UUID_TO_BIN($uuid, 1)` — the DB stores UUIDs with byte swap.
-
-**Note:** No `.env` device ID configuration needed — ETL uses `device_reference_id` (e.g. `masgrau-infinitum-pg1`) which the API resolves automatically.
-
-**Rollback:**
-```bash
-php artisan migrate:rollback --path=database/migrations/2026_03_13_000001_seed_masgrau_water_sources_and_devices.php
-```
-
 - [x] Done (dev — 2026-03-13)
-- [x] Verified in DB
 
----
+### A.2. Update Masgrau ETL schedule
 
-### 2. Update cron schedule
-
-Change Masgrau ETL schedule from every 5 minutes to **every 60 minutes** (at :05 past each hour) to match Shayp cadence.
+Change from every 5 minutes to **every 60 minutes** (at :05 past each hour).
 
 - [ ] Done
 
 ---
 
-### 2b. Scheduled commands — DevOps action required
+## Part B — Lynx Integration
 
-Two artisan commands are declared in `routes/console.php` and must be running in production. **DevOps is responsible for ensuring the Laravel scheduler is running on the server.** Dev team owns the schedule declaration only.
+### B.1. Run Lynx migrations
 
-**Commands declared in `routes/console.php`:**
+```bash
+php artisan migrate --path=database/migrations/2026_03_17_100001_create_lynx_club_configs_table.php
+php artisan migrate --path=database/migrations/2026_03_17_100002_create_lynx_water_records_table.php
+php artisan migrate --path=database/migrations/2026_03_17_100003_create_lynx_sync_logs_table.php
+php artisan migrate --path=database/migrations/2026_03_17_100004_add_is_lynx_record_to_water_readings_table.php
+php artisan migrate --path=database/migrations/2026_03_17_100005_add_site_id_to_lynx_club_configs_table.php
+```
+
+**Creates:** `lynx_club_configs`, `lynx_water_records`, `lynx_sync_logs` tables + `is_lynx_record` column on `water_readings` + `site_id` column on `lynx_club_configs`.
+
+**Rollback:** `php artisan migrate:rollback --step=5`
+
+- [x] Done (cloud dev DB — 2026-03-17)
+
+### B.2. Configure Slack webhook
+
+Add to core-2.0 `.env`:
+
+```env
+SLACK_LYNX_WEBHOOK_URL=https://hooks.slack.com/services/XXXXX/XXXXX/XXXXX
+```
+
+Used by `lynx:check-sync-health` command to alert stale clubs. Create the webhook in Slack workspace under a `#lynx-alerts` channel.
+
+- [ ] Done
+
+### B.3. Create Adare Manor club config via back office
+
+1. Open back office → `/water/lynx`
+2. Click **Add Club**
+3. Fill in:
+   - **Tenant ID:** Adare Manor tenant UUID
+   - **Site ID:** Adare Manor site UUID
+   - **Club Slug:** `adare-manor`
+   - **Unit:** `m3`
+   - **Timezone:** `Europe/Dublin`
+   - **Day Start:** `15:55`
+4. Copy the generated API key — it won't be shown again
+
+- [ ] Done
+
+### B.4. Configure Lynx ETL env vars
+
+Add to ETL `.env`:
+
+```env
+# Lynx — Adare Manor
+LYNX_DB_HOST=192.168.x.x
+LYNX_DB_PORT=1433
+LYNX_DB_NAME=lynx_main
+LYNX_DB_USER=maya_reader
+LYNX_DB_PASSWORD=CHANGE_ME
+LYNX_DB_DRIVER=ODBC Driver 17 for SQL Server
+LYNX_API_URL=https://api2.mayaglobal.io/api/v2/lynx/sync
+LYNX_API_KEY=lynx_PASTE_KEY_FROM_STEP_B3
+LYNX_CLUB_IDENTIFIER=adare-manor
+LYNX_UNIT=m3
+LYNX_IRRIGATION_DAY_START=15:55
+```
+
+- [ ] Done
+
+### B.5. Test Lynx pipeline — dry run
+
+```bash
+cd /path/to/ETL
+python pipelines/lynx/main.py --dry-run --verbose
+```
+
+Expected: JSON output with reconciled zone records. No API call made.
+
+- [ ] Done
+
+### B.6. Test Lynx pipeline — live push
+
+```bash
+python pipelines/lynx/main.py --verbose
+```
+
+Expected: `Sync complete: status=success, accepted=N, rejected=0`
+
+Verify in DB:
+
+```sql
+SELECT * FROM lynx_water_records ORDER BY created_at DESC LIMIT 20;
+SELECT * FROM lynx_sync_logs ORDER BY created_at DESC LIMIT 5;
+```
+
+- [ ] Done
+
+### B.7. Test promotion
+
+Trigger manually:
+
+```bash
+php artisan water:promote-lynx-daily-readings
+```
+
+Verify water_readings created:
+
+```sql
+SELECT wr.*, ws.name AS source_name
+FROM water_readings wr
+JOIN water_sources ws ON wr.water_source_id = ws.id
+WHERE wr.is_lynx_record = 1
+ORDER BY wr.reading_date DESC
+LIMIT 20;
+```
+
+- [ ] Done
+
+### B.8. Test health check
+
+```bash
+php artisan lynx:check-sync-health
+```
+
+Expected: "All clubs healthy" (if B.6 ran recently) or Slack alert (if >26h since last sync).
+
+- [ ] Done
+
+### B.9. Schedule Lynx pipeline
+
+Add to ETL scheduler (APScheduler in `app/scheduler.py`) or system cron:
+
+```
+# Daily at 06:00 local time (before 06:30 promotion service)
+0 6 * * * cd /path/to/ETL && python pipelines/lynx/main.py >> logs/lynx_cron.log 2>&1
+```
+
+- [ ] Done
+
+### B.10. Optional: historical backfill
+
+```bash
+python pipelines/lynx/main.py --backfill --months 12 --verbose
+```
+
+Uses `water_use` table (permanent, but midnight boundaries — less precise than actuals). Run once for historical data.
+
+- [ ] Done (if applicable)
+
+---
+
+## Part C — Scheduled Commands (DevOps)
+
+Three artisan commands declared in `routes/console.php`. **DevOps must confirm the Laravel scheduler is running.**
 
 | Command | Schedule | Purpose |
 |---------|----------|---------|
-| `water:aggregate-connected-daily-readings` | Hourly | Converts `connected_water_meter_hourly_records` → daily `water_readings` (Masgrau + Shayp) |
-| `water:promote-lynx-daily-readings` | Daily at 06:30 | Promotes `lynx_water_records` → `water_readings` (Lynx) |
-| `lynx:check-sync-health` | Daily at 08:00 | Flags clubs with no sync in >26h → Slack alert |
+| `water:aggregate-connected-daily-readings` | Hourly | `connected_water_meter_hourly_records` → `water_readings` (Masgrau + Shayp) |
+| `water:promote-lynx-daily-readings` | Daily 06:30 | `lynx_water_records` → `water_readings` (Lynx) |
+| `lynx:check-sync-health` | Daily 08:00 | Flag clubs with no sync in >26h → Slack alert |
 
-**For DevOps:** ensure `php artisan schedule:run` is triggered every minute on the production server (standard Laravel cron entry), or that `php artisan schedule:work` is running as a persistent process.
+**For DevOps:** ensure `php artisan schedule:run` runs every minute on the production server (standard Laravel cron), or `php artisan schedule:work` runs as a persistent process.
+
+```cron
+* * * * * cd /path/to/core-2.0 && php artisan schedule:run >> /dev/null 2>&1
+```
 
 - [ ] DevOps confirmed scheduler is running in production
 
 ---
 
-### 3. Test: POST with device_reference_id to Water API
+## Part D — Verification
 
-Send a test POST to verify the backend resolves `device_reference_id` correctly:
+### D.1. Water Dashboard — visual check
 
-```bash
-curl -X POST /api/v2/water/hourly-records \
-  -H "Authorization: Bearer $JWT" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "device_reference_id": "masgrau-infinitum-pg1",
-    "records": [{"consumption_value": 1.0, "date_time": "2026-03-13 10:00:00"}]
-  }'
-```
+Open the Water Dashboard for the target tenant and confirm:
 
-Expected: 201 Created.
+1. Masgrau data appears in daily + hourly views
+2. Lynx zone data appears in the outflows list
+3. Lynx records show purple link icon in Water Records table
+4. Calendar dots are green + locked (protected) for Lynx irrigation days
+5. Hourly toggle is NOT shown for Lynx outflows
 
-- [x] Done (local Docker — 2026-03-13) — All 3 PGs return 201, resolved to device_id 5/6/7
-
----
-
-### 4. Test: ETL posts data
-
-Run masgrau.py manually once and check:
-
-```sql
-SELECT hr.*, d.device_reference_id
-FROM connected_water_meter_hourly_records hr
-JOIN connected_water_meter_devices d ON hr.connected_water_meter_device_id = d.id
-WHERE d.device_reference_id LIKE 'masgrau-infinitum-%'
-ORDER BY hr.date_time DESC
-LIMIT 10;
-```
-
-Expected: 3 rows (one per PG) with cumulative m3 values.
-
-- [x] Done (local Docker — 2026-03-13) — 3 records: pg1=123.456, pg2=456.789, pg3=789.012 m3
-
----
-
-### 5. Test: daily aggregation
-
-Wait for the `AggregateConnectedWaterMeterDailyReadings` cron to run (or trigger manually), then check:
-
-```sql
-SELECT wr.*
-FROM water_readings wr
-JOIN water_sources ws ON wr.water_source_id = ws.id
-WHERE ws.name LIKE 'Masgrau%'
-ORDER BY wr.reading_date DESC;
-```
-
-Expected: daily readings with `measurement_type=meter_reading`, `consumption_value` = delta from cumulative.
-
-- [x] Done (local Docker — 2026-03-13) — 3 water_readings created (PG1=123.456, PG2=456.789, PG3=789.012). Bug fixed: `$measurementType->value` → `$measurementType` in aggregation service line 219.
-
----
-
-### 6. Test: site consumption allocation
-
-```sql
-SELECT wsc.*
-FROM water_site_consumption wsc
-JOIN water_readings wr ON wsc.water_reading_id = wr.id
-JOIN water_sources ws ON wr.water_source_id = ws.id
-WHERE ws.name LIKE 'Masgrau%'
-ORDER BY wsc.created_at DESC;
-```
-
-- [x] Done (local Docker — 2026-03-13) — 3 water_site_consumption records allocated
-
----
-
-### 7. Test: Water Dashboard
-
-Open the Water Dashboard for Infinitum Living and confirm Masgrau data appears in both daily and hourly views.
-
-- [x] API verified (local Docker — 2026-03-13) — 69 connected meter readings returned (3 Masgrau + 66 Shayp). Bug fixed: aggregation was not setting `is_connected_device_record=true`, so "Connected Meter Logs" tab was empty. Fixed in `ConnectedWaterMeterDailyAggregationService` + backfilled 69 existing records.
-- [x] Hourly view verified (local Docker — 2026-03-13) — All 3 Masgrau sources return hourly graph data with consumption deltas and cumulative tracking. Source icons (speedometer for meter_reading, wifi badge for connected) confirmed in code.
-- [ ] Visual check in browser (pending)
+- [ ] Done
 
 ---
 
 ## Production Changes Log
 
-Track every production change here in chronological order.
-
 | Date | Change | Who | Ticket | Rollback |
 |------|--------|-----|--------|----------|
 | | Migration: seed Masgrau water sources + devices + site associations | | | `php artisan migrate:rollback --path=...seed_masgrau...` |
 | | Cron: Masgrau schedule 5min → 60min | | | Revert cron entry |
-| | DevOps: Laravel scheduler running in production (`schedule:run` cron or `schedule:work`) | | | N/A |
-| | Deploy: aggregation service `meter_reading` support | | | Redeploy previous version |
-| | Deploy: Water API `device_reference_id` resolution | | | Redeploy previous version |
-| | Deploy: masgrau.py stateless rewrite | | | Redeploy previous version |
-| | Deploy: shayp.py `device_reference_id` update | | | Redeploy previous version |
-| | Deploy: `lib/water.py` shared module | | | Redeploy previous version |
-| | Migration: Lynx tables (`lynx_club_configs`, `lynx_water_records`, `lynx_sync_logs`, `is_lynx_record` column, `site_id` on club configs) | | | Rollback 5 migrations |
-| | Deploy: Lynx backend (ingest endpoint, promotion service, health monitoring) | | | Redeploy previous version |
-| | Deploy: Back office (connected device form + Lynx club config form) | | | Redeploy previous version |
-| | Deploy: Water Page Lynx display (frontend) | | | Redeploy previous version |
-| | Config: Slack webhook URL for `services.slack.lynx_webhook_url` | | | N/A |
-| | Lynx agent: installed on Adare Manor Windows machine + Task Scheduler configured | | | Remove scheduled task |
+| | Migration: Lynx tables (5 migrations) | | | `php artisan migrate:rollback --step=5` |
+| | Deploy: core-2.0 (Lynx ingest + promotion + health + back office API + Water Page API) | | | Redeploy previous version |
+| | Deploy: back-office (connected device + Lynx club config forms) | | | Redeploy previous version |
+| | Deploy: web (Water Page Lynx display) | | | Redeploy previous version |
+| | Deploy: ETL (`pipelines/lynx/` + `lib/water.py` + `masgrau.py` + `shayp.py`) | | | Redeploy previous version |
+| | Config: `.env` — `SLACK_LYNX_WEBHOOK_URL` on core-2.0 | | | Remove var |
+| | Config: `.env` — `LYNX_*` vars on ETL host | | | Remove vars |
+| | DevOps: Laravel scheduler running in production | | | N/A |
+| | Lynx pipeline: daily cron at 06:00 on ETL host | | | Remove cron entry |
+| | Club config: Adare Manor created via back office | | | Delete via back office |
 
 ---
 
 ## Rollback Plan
 
-If something goes wrong after go-live:
+### Connected Meters
 
-1. **Stop Masgrau ETL** — disable cron or stop the pipeline
-2. **Rollback migration** — removes water sources, devices, and associations
-3. **Redeploy previous ETL** — restores old masgrau.py posting to metric table
-4. **Redeploy previous backend** — restores aggregation service without `meter_reading` support
+1. Stop Masgrau ETL cron
+2. Rollback seed migration
+3. Redeploy previous ETL + backend
 
-Shayp pipeline is unaffected — `lib/water.py` extraction and `device_reference_id` are backward-compatible.
+### Lynx
+
+1. Stop Lynx pipeline cron
+2. Rollback 5 Lynx migrations (cascading deletes clean up all Lynx data)
+3. Redeploy previous backend + ETL
+4. Water Page reverts automatically (no Lynx data → no Lynx display)
+
+Shayp pipeline is unaffected — fully independent.

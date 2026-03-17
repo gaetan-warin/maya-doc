@@ -405,9 +405,9 @@ maya-lynx-agent/
 │   └── models.py                (dataclasses: StationRecord, ZoneRecord)
 ```
 
-- [ ] pyodbc connection configured from YAML
-- [ ] `water_use_upload` query (7-day window, join `station` on SUID)
-- [ ] `schedule_activity_download` query (fallback, join `station` on SUID)
+- [x] pyodbc connection configured from YAML — `pipelines/lynx/connection.py` *(2026-03-17)*
+- [x] `water_use_upload` query (7-day window, join `station` on SUID) — `pipelines/lynx/queries.py`
+- [x] `schedule_activity_download` query (fallback, join `station` on SUID) — `pipelines/lynx/queries.py`
 
 #### 3.E.2 — Reconciliation Engine (2d)
 
@@ -425,9 +425,9 @@ Logic per zone per irrigation day:
 
 Edge cases: overseed (multiple downloads/day → sum all), rain hold (zero actual = valid, include it), re-sync (upsert via UNIQUE constraint), satellite failure (accept gap).
 
-- [ ] All edge cases handled per `LYNX_COMPLETE_REFERENCE.md` section 4
-- [ ] Irrigation day boundary correct (timestamps before `day_start` belong to previous day)
-- [ ] `manual_volume = total_duration - auto_duration`
+- [x] All edge cases handled — `pipelines/lynx/reconciler.py` (overseed sum, rain hold zero, gap no-record) *(2026-03-17)*
+- [x] Irrigation day boundary — `pipelines/lynx/boundary.py` (timestamps before `day_start` belong to previous day)
+- [x] `manual_volume = total_duration - auto_duration` — computed in `pipelines/lynx/aggregator.py`
 
 #### 3.E.3 — HTTPS Push (1d)
 
@@ -436,10 +436,10 @@ maya/
 └── client.py    (POST /api/v2/lynx/sync, retry 3× exponential backoff)
 ```
 
-- [ ] Payload matches API contract (3.B.3)
-- [ ] Retry 3× with exponential backoff on 5xx
-- [ ] 4xx errors logged and not retried (config/auth issue — needs human intervention)
-- [ ] Full response body logged on failure
+- [x] Payload matches API contract (3.B.3) — `pipelines/lynx/client.py` *(2026-03-17)*
+- [x] Retry 3× with exponential backoff on 5xx
+- [x] 4xx errors logged and not retried (RuntimeError raised)
+- [x] Full response body logged on failure
 
 #### 3.E.4 — CLI + Logging (1d)
 
@@ -447,10 +447,10 @@ Flags: `--config <path>`, `--dry-run` (reconcile only, no push — outputs JSON 
 Exit codes: 0=success, 1=partial, 2=API fail, 3=DB fail, 4=config error
 Rotating log: 10MB × 5 files at `C:\MayaLynx\logs\`
 
-- [ ] All CLI flags implemented
-- [ ] Rotating log configured
-- [ ] `--dry-run` outputs reconciled payload JSON without pushing
-- [ ] Exit codes documented in README
+- [x] All CLI flags implemented — `--config`, `--dry-run`, `--backfill`, `--months`, `--verbose` *(2026-03-17)*
+- [x] Rotating log configured — 10MB x 5 files at `logs/lynx.log`
+- [x] `--dry-run` outputs reconciled payload JSON without pushing
+- [x] Exit codes: 0=success, 1=partial, 2=API fail, 3=DB fail, 4=config error
 
 #### 3.E.5 — Windows Package (1d)
 
